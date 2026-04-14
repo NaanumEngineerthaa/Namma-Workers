@@ -1,0 +1,243 @@
+import 'dart:async';
+import 'dart:math';
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'tracking_page.dart';
+
+class MatchingPage extends StatefulWidget {
+  final String jobId;
+  final String service;
+  final double userLat;
+  final double userLng;
+
+  const MatchingPage({
+    super.key,
+    required this.jobId,
+    required this.service,
+    required this.userLat,
+    required this.userLng,
+  });
+
+  @override
+  State<MatchingPage> createState() => _MatchingPageState();
+}
+
+class _MatchingPageState extends State<MatchingPage> {
+  String _statusText = "Analyzing your location...";
+  bool _issearching = true;
+  StreamSubscription? _jobSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _startMatchingProcess();
+    _listenToJobStatus();
+  }
+
+  @override
+  void dispose() {
+    _jobSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _listenToJobStatus() {
+    _jobSubscription = FirebaseFirestore.instance
+        .collection('jobs')
+        .doc(widget.jobId)
+        .snapshots()
+        .listen((snapshot) {
+      if (!snapshot.exists) return;
+      final data = snapshot.data()!;
+      if (data['status'] == 'accepted') {
+        _jobSubscription?.cancel();
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => TrackingPage(
+                jobId: widget.jobId,
+                workerId: data['workerId'],
+                userLat: widget.userLat,
+                userLng: widget.userLng,
+              ),
+            ),
+          );
+        }
+      }
+    });
+  }
+
+  Future<void> _startMatchingProcess() async {
+    setState(() => _statusText = "Finding nearest ${widget.service}s...");
+
+    try {
+      final workersSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where('role', isEqualTo: 'worker')
+          .where('profession', isEqualTo: widget.service)
+          .where('isOnline', isEqualTo: true)
+          .where('isBusy', isEqualTo: false)
+          .get();
+
+      if (workersSnapshot.docs.isEmpty) {
+        setState(() {
+          _statusText = "No ${widget.service}s available right now. Please try again later.";
+          _issearching = false;
+        });
+        return;
+      }
+
+      List<QueryDocumentSnapshot> workers = workersSnapshot.docs;
+      workers.sort((a, b) {
+        final d1 = _calculateDistance(widget.userLat, widget.userLng, a['latitude'], a['longitude']);
+        final d2 = _calculateDistance(widget.userLat, widget.userLng, b['latitude'], b['longitude']);
+        return d1.compareTo(d2);
+      });
+
+      tryWorkersSequentially(workers, 0);
+
+    } catch (e) {
+      setState(() => _statusText = "Error matching workers: $e");
+    }
+  }
+
+  Future<void> tryWorkersSequentially(List<QueryDocumentSnapshot> workers, int index) async {
+    if (index >= workers.length) {
+      if (mounted) {
+        setState(() {
+          _statusText = "No more workers available. Retrying shortly...";
+          _issearching = false;
+        });
+      }
+      return;
+    }
+
+    final worker = workers[index];
+    final workerId = worker.id;
+
+    if (mounted) {
+      setState(() => _statusText = "Requesting ${worker['name'] ?? 'nearest worker'}...");
+    }
+
+    // 1. Create a request doc with expiry
+    final reqRef = await FirebaseFirestore.instance.collection('job_requests').add({
+      'jobId': widget.jobId,
+      'workerId': workerId,
+      'status': 'pending',
+      'createdAt': FieldValue.serverTimestamp(),
+      'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(minutes: 5))),
+      'customerName': FirebaseAuth.instance.currentUser?.displayName ?? 'Customer',
+      'service': widget.service,
+    });
+
+    // 2. Track in main job doc
+    await FirebaseFirestore.instance.collection('jobs').doc(widget.jobId).update({
+      'requestedWorkers': FieldValue.arrayUnion([workerId]),
+    });
+
+    // 3. ✨ LISTEN for early rejection or timeout
+    final completer = Completer<void>();
+    StreamSubscription? sub;
+
+    sub = reqRef.snapshots().listen((snapshot) {
+      if (!snapshot.exists) return;
+      final status = snapshot.data()?['status'];
+      if (status == 'accepted' || status == 'rejected' || status == 'timeout') {
+        if (!completer.isCompleted) completer.complete();
+      }
+    });
+
+    // ⏳ WAIT for either: worker response OR 5 MIN timeout
+    await Future.any([
+      completer.future,
+      Future.delayed(const Duration(minutes: 5))
+    ]);
+
+    await sub.cancel();
+
+    if (!mounted) return;
+
+    final jobDoc = await FirebaseFirestore.instance.collection('jobs').doc(widget.jobId).get();
+    if (jobDoc['status'] == 'accepted') return;
+
+    // 4. Mark request as timeout if it was still pending
+    final currentReq = await reqRef.get();
+    if (currentReq['status'] == 'pending') {
+      await reqRef.update({'status': 'timeout'});
+    }
+
+    // 5. Try next worker
+    tryWorkersSequentially(workers, index + 1);
+  }
+
+  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    const r = 6371; // km
+    final dLat = _toRadians(lat2 - lat1);
+    final dLon = _toRadians(lon2 - lon1);
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(_toRadians(lat1)) * cos(_toRadians(lat2)) * sin(dLon / 2) * sin(dLon / 2);
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return r * c;
+  }
+
+  double _toRadians(double degree) => degree * pi / 180;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(40.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (_issearching)
+                const SizedBox(
+                  width: 80,
+                  height: 80,
+                  child: CircularProgressIndicator(strokeWidth: 6, color: Colors.blue),
+                ),
+              if (!_issearching)
+                const Icon(Icons.error_outline, size: 80, color: Colors.orange),
+              const SizedBox(height: 40),
+              Text(
+                _issearching ? "Matching Process" : "Searching Paused",
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                _statusText,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 40),
+              if (!_issearching)
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[800], minimumSize: const Size(200, 50), foregroundColor: Colors.white),
+                  child: const Text("Go Back"),
+                ),
+              if (_issearching)
+                TextButton(
+                  onPressed: () async {
+                    try {
+                      await FirebaseFirestore.instance.collection('jobs').doc(widget.jobId).update({
+                        'status': 'cancelled',
+                      });
+                      if (context.mounted) Navigator.pop(context);
+                    } catch (e) {
+                      debugPrint("Cancel fail: $e");
+                      if (context.mounted) Navigator.pop(context);
+                    }
+                  },
+                  child: const Text("Cancel Request", style: TextStyle(color: Colors.red)),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
