@@ -73,17 +73,18 @@ class _MapConfirmPageState extends State<MapConfirmPage> {
       final docRef = await FirebaseFirestore.instance.collection('jobs').add({
         'title': widget.service,
         'type': 'live',
-        'status': 'searching',
-        'customerId': user.uid,
+        'status': 'active',
+        'userId': user.uid,
         'workerId': null,
+        'profession': widget.service,
+        'amount': 500,
         'latitude': widget.lat,
         'longitude': widget.lng,
         'location': readableAddress,
         'requestedWorkers': [],
-        'service': widget.service, // Explicitly included for easier filtering
         'serviceType': sType,
-        'price': 500,
         'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
       });
 
       if (mounted) {

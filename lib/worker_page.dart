@@ -11,7 +11,7 @@ import 'worker_profile_setup_page.dart';
 import 'worker_live_page.dart';
 import 'live_requests_page.dart';
 import 'scheduled_requests_page.dart';
-import 'login_page.dart';
+import 'worker_history_page.dart';
 import 'login_page.dart';
 
 class WorkerPage extends StatefulWidget {
@@ -31,6 +31,7 @@ class _WorkerPageState extends State<WorkerPage> {
 
   StreamSubscription<ServiceStatus>? _serviceStatusStreamSubscription;
   StreamSubscription<QuerySnapshot>? _jobRequestSubscription;
+  StreamSubscription<QuerySnapshot>? _activeJobSubscription;
 
   @override
   void initState() {
@@ -38,6 +39,7 @@ class _WorkerPageState extends State<WorkerPage> {
     _checkInitialLocation();
     _subscribeToServiceStatus();
     _listenForJobRequests();
+    _listenToJobStatusChanges();
   }
 
   void _listenForJobRequests() {
@@ -58,6 +60,38 @@ class _WorkerPageState extends State<WorkerPage> {
     });
   }
 
+  void _listenToJobStatusChanges() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    _activeJobSubscription = FirebaseFirestore.instance
+        .collection('jobs')
+        .where('workerId', isEqualTo: user.uid)
+        .snapshots()
+        .listen((snapshot) async {
+      for (var change in snapshot.docChanges) {
+        if (change.type == DocumentChangeType.modified) {
+          final data = change.doc.data() as Map<String, dynamic>;
+          final status = data['status'];
+          
+          if (status == 'cancelled' || status == 'closed') {
+            await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+              'isBusy': false,
+            });
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text("Job ${status == 'cancelled' ? 'Cancelled' : 'Closed'} by customer. 🔴"),
+                  backgroundColor: Colors.redAccent,
+                ),
+              );
+            }
+          }
+        }
+      }
+    });
+  }
+
   void _showJobRequestDialog(DocumentSnapshot requestDoc) {
     if (!mounted) return;
     
@@ -73,24 +107,38 @@ class _WorkerPageState extends State<WorkerPage> {
     _stopTracking();
     _serviceStatusStreamSubscription?.cancel();
     _jobRequestSubscription?.cancel();
+    _activeJobSubscription?.cancel();
     super.dispose();
   }
 
   Stream<double> _monthlyEarnings(String workerId) {
-    final start = DateTime(DateTime.now().year, DateTime.now().month, 1);
+    // start of the current month
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, 1);
+
     return FirebaseFirestore.instance
         .collection('jobs')
         .where('workerId', isEqualTo: workerId)
         .where('status', isEqualTo: 'completed')
-        // Removing composite filter to avoid needing Firestore index for now
         .snapshots()
         .map((snapshot) {
           double total = 0;
           for (var doc in snapshot.docs) {
-            final completedAt = (doc['completedAt'] as Timestamp?)?.toDate();
-            // Filter by date in memory
+            final data = doc.data() as Map<String, dynamic>;
+            
+            // Fallback to updatedAt if completedAt is missing (e.g. during server sync)
+            final Timestamp? ts = data['completedAt'] as Timestamp? ?? data['updatedAt'] as Timestamp?;
+            final completedAt = ts?.toDate();
+            
             if (completedAt != null && completedAt.isAfter(start)) {
-              total += (doc['price'] ?? 0).toDouble();
+              final rawVal = data['amount'] ?? data['price'] ?? 0;
+              double val = 0;
+              if (rawVal is num) {
+                val = rawVal.toDouble();
+              } else if (rawVal is String) {
+                val = double.tryParse(rawVal) ?? 0;
+              }
+              total += val;
             }
           }
           return total;
@@ -169,7 +217,7 @@ class _WorkerPageState extends State<WorkerPage> {
     final jobs = await FirebaseFirestore.instance
         .collection('jobs')
         .where('workerId', isEqualTo: uid)
-        .where('status', isEqualTo: 'accepted')
+        .where('status', isEqualTo: 'picked')
         .where('type', isEqualTo: 'live')
         .get();
     return jobs.docs.isNotEmpty;
@@ -179,7 +227,7 @@ class _WorkerPageState extends State<WorkerPage> {
     final jobs = await FirebaseFirestore.instance
         .collection('jobs')
         .where('workerId', isEqualTo: uid)
-        .where('status', isEqualTo: 'accepted')
+        .where('status', isEqualTo: 'picked')
         .where('type', isEqualTo: 'scheduled')
         .get();
 
@@ -229,8 +277,9 @@ class _WorkerPageState extends State<WorkerPage> {
 
     await FirebaseFirestore.instance.collection('jobs').doc(jobId).update({
       'workerId': user.uid,
-      'status': 'accepted',
+      'status': 'picked',
       'acceptedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
     });
 
     // 🔥 SET ISBUSY for Live Jobs
@@ -275,10 +324,31 @@ class _WorkerPageState extends State<WorkerPage> {
     await FirebaseFirestore.instance.collection('jobs').doc(jobId).update({
       'status': 'completed',
       'completedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
     });
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Job marked as completed! 🏁")),
+      );
+    }
+  }
+
+  Future<void> _cancelActiveJob(String jobId) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+      'isBusy': false,
+    });
+
+    await FirebaseFirestore.instance.collection('jobs').doc(jobId).update({
+      'status': 'cancelled',
+      'cancelledAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Job cancelled by you. 🔴")),
       );
     }
   }
@@ -619,7 +689,7 @@ class _WorkerPageState extends State<WorkerPage> {
       stream: FirebaseFirestore.instance
           .collection('jobs')
           .where('workerId', isEqualTo: user.uid)
-          .where('status', isEqualTo: 'accepted')
+          .where('status', isEqualTo: 'picked')
           .where('type', isEqualTo: 'live')
           .snapshots(),
       builder: (context, snapshot) {
@@ -789,6 +859,35 @@ class _WorkerPageState extends State<WorkerPage> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          bool? confirm = await showDialog(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text("Cancel Job?"),
+                              content: const Text("Are you sure you want to cancel this picked job?"),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("No")),
+                                TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Yes, Cancel", style: TextStyle(color: Colors.red))),
+                              ],
+                            ),
+                          );
+                          if (confirm == true) {
+                            await _cancelActiveJob(jobDoc.id);
+                          }
+                        },
+                        icon: const Icon(Icons.cancel),
+                        label: const Text("Cancel Job", style: TextStyle(fontWeight: FontWeight.bold)),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red[700],
+                          side: BorderSide(color: Colors.red[700]!, width: 2),
+                          padding: const EdgeInsets.symmetric(vertical: 14)
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -814,7 +913,7 @@ class _WorkerPageState extends State<WorkerPage> {
           stream: FirebaseFirestore.instance
               .collection('jobs')
               .where('workerId', isEqualTo: user.uid)
-              .where('status', isEqualTo: 'accepted')
+              .where('status', isEqualTo: 'picked')
               .snapshots(),
           builder: (context, acceptedSnapshot) {
             final List<DocumentSnapshot> activeJobs = acceptedSnapshot.data?.docs ?? [];
@@ -1073,7 +1172,7 @@ class _WorkerPageState extends State<WorkerPage> {
       stream: FirebaseFirestore.instance
           .collection('jobs')
           .where('workerId', isEqualTo: uid)
-          .where('status', isEqualTo: 'accepted')
+          .where('status', isEqualTo: 'picked')
           // Removed orderBy to avoid requiring composite index
           .snapshots(),
       builder: (context, snapshot) {
@@ -1125,15 +1224,18 @@ class _WorkerPageState extends State<WorkerPage> {
             color: Colors.orange[50],
             borderRadius: BorderRadius.circular(20),
           ),
-          child: Row(
-            children: [
-              Icon(Icons.account_balance_wallet_outlined, size: 16, color: Colors.orange[800]),
-              const SizedBox(width: 4),
-              Text(
-                "₹${NumberFormat('#,###').format(earnings)}", 
-                style: TextStyle(color: Colors.orange[800], fontWeight: FontWeight.bold)
-              ),
-            ],
+          child: InkWell(
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WorkerHistoryPage())),
+            child: Row(
+              children: [
+                Icon(Icons.account_balance_wallet_outlined, size: 16, color: Colors.orange[800]),
+                const SizedBox(width: 4),
+                Text(
+                  "₹${NumberFormat('#,###').format(earnings)}", 
+                  style: TextStyle(color: Colors.orange[800], fontWeight: FontWeight.bold)
+                ),
+              ],
+            ),
           ),
         );
       }
@@ -1148,39 +1250,42 @@ class _WorkerPageState extends State<WorkerPage> {
         final earnings = snapshot.data ?? 0;
         final progress = (earnings / target).clamp(0.0, 1.0);
 
-        return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Colors.orange[800]!, Colors.orange[400]!],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+        return GestureDetector(
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WorkerHistoryPage())),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.orange[800]!, Colors.orange[400]!],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.orange.withAlpha(20),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.orange.withAlpha(20),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                "Total Earnings This Month",
-                style: TextStyle(color: Colors.white, fontSize: 16),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                "₹${earnings.toStringAsFixed(0)}",
-                style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              _buildProgressBar(progress, target),
-            ],
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Total Earnings This Month",
+                  style: TextStyle(color: Colors.white, fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "₹${earnings.toStringAsFixed(0)}",
+                  style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                _buildProgressBar(progress, target),
+              ],
+            ),
           ),
         );
       }
@@ -1222,7 +1327,7 @@ class _WorkerPageState extends State<WorkerPage> {
     final data = doc.data() as Map<String, dynamic>;
     final title = data['title'] ?? 'Job';
     final address = data['location'] ?? 'Address N/A';
-    final price = data['price']?.toString() ?? 'TBD';
+    final price = (data['amount'] ?? data['price'] ?? 'TBD').toString();
     final type = data['type'] ?? 'live';
     final userId = data['customerId'] ?? data['userId'] ?? '';
     
@@ -1386,23 +1491,56 @@ class _WorkerPageState extends State<WorkerPage> {
                 ],
               )
             else
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () => _completeJob(doc.id),
-                  icon: const Icon(Icons.check_circle_outline),
-                  label: const Text("Mark as Completed"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green[600],
-                    foregroundColor: Colors.white,
+              Column(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _completeJob(doc.id),
+                      icon: const Icon(Icons.check_circle_outline),
+                      label: const Text("Mark as Completed"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green[600],
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        bool? confirm = await showDialog(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text("Cancel Job?"),
+                            content: const Text("Are you sure you want to cancel this picked job?"),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("No")),
+                              TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Yes, Cancel", style: TextStyle(color: Colors.red))),
+                            ],
+                          ),
+                        );
+                        if (confirm == true) {
+                          await _cancelActiveJob(doc.id);
+                        }
+                      },
+                      icon: const Icon(Icons.cancel_outlined),
+                      label: const Text("Cancel Job"),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red[600],
+                        side: BorderSide(color: Colors.red[600]!),
+                      ),
+                    ),
+                  ),
+                ],
               ),
           ],
         ),
       ),
     );
   }
+
 
   Widget _buildSettingsPage() {
     final user = FirebaseAuth.instance.currentUser;
@@ -1577,11 +1715,12 @@ class _IncomingJobDialogState extends State<IncomingJobDialog> {
     final workerId = req['workerId'];
 
     try {
-      // 1. Update job as accepted
+      // 1. Update job as picked
       await FirebaseFirestore.instance.collection('jobs').doc(jobId).update({
-        'status': 'accepted',
+        'status': 'picked',
         'workerId': workerId,
         'acceptedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
       });
 
       // 2. Mark worker as busy
@@ -1590,7 +1729,7 @@ class _IncomingJobDialogState extends State<IncomingJobDialog> {
       });
 
       // 3. Update request status
-      await req.reference.update({'status': 'accepted'});
+      await req.reference.update({'status': 'picked'});
 
       if (mounted) {
         Navigator.pop(context);

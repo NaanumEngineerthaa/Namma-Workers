@@ -28,17 +28,34 @@ class _MatchingPageState extends State<MatchingPage> {
   bool _issearching = true;
   StreamSubscription? _jobSubscription;
 
+  Timer? _timeoutTimer;
+  final DateTime _startTime = DateTime.now();
+
   @override
   void initState() {
     super.initState();
     _startMatchingProcess();
     _listenToJobStatus();
+    _startTimeoutTimer();
   }
 
   @override
   void dispose() {
+    _timeoutTimer?.cancel();
     _jobSubscription?.cancel();
     super.dispose();
+  }
+
+  void _startTimeoutTimer() {
+    _timeoutTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
+      if (DateTime.now().difference(_startTime).inMinutes >= 30) {
+        timer.cancel();
+        await FirebaseFirestore.instance.collection('jobs').doc(widget.jobId).update({
+          'status': 'closed',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+    });
   }
 
   void _listenToJobStatus() {
@@ -49,8 +66,11 @@ class _MatchingPageState extends State<MatchingPage> {
         .listen((snapshot) {
       if (!snapshot.exists) return;
       final data = snapshot.data()!;
-      if (data['status'] == 'accepted') {
+      final status = data['status'];
+      
+      if (status == 'picked') {
         _jobSubscription?.cancel();
+        _timeoutTimer?.cancel();
         if (mounted) {
           Navigator.pushReplacement(
             context,
@@ -63,6 +83,26 @@ class _MatchingPageState extends State<MatchingPage> {
               ),
             ),
           );
+        }
+      } else if (status == 'cancelled') {
+        _jobSubscription?.cancel();
+        _timeoutTimer?.cancel();
+        if (mounted) Navigator.pop(context);
+      } else if (status == 'closed') {
+        _jobSubscription?.cancel();
+        _timeoutTimer?.cancel();
+        if (mounted) {
+          setState(() {
+            _statusText = "No workers found in 30 minutes. Request closed.";
+            _issearching = false;
+          });
+        }
+      } else if (status == 'completed') {
+        _jobSubscription?.cancel();
+        _timeoutTimer?.cancel();
+        if (mounted) {
+          // Typically wouldn't happen during matching, but just in case
+          Navigator.pop(context);
         }
       }
     });
@@ -115,9 +155,18 @@ class _MatchingPageState extends State<MatchingPage> {
 
     final worker = workers[index];
     final workerId = worker.id;
+    final workerRef = FirebaseFirestore.instance.collection('users').doc(workerId);
+    final workerDoc = await workerRef.get();
+    final workerData = workerDoc.data() as Map<String, dynamic>?;
+
+    if (workerData == null || workerData['isOnline'] != true || workerData['isBusy'] == true) {
+      // Skip this worker and try next
+      tryWorkersSequentially(workers, index + 1);
+      return;
+    }
 
     if (mounted) {
-      setState(() => _statusText = "Requesting ${worker['name'] ?? 'nearest worker'}...");
+      setState(() => _statusText = "Requesting ${workerData['name'] ?? 'nearest worker'}...");
     }
 
     // 1. Create a request doc with expiry
@@ -143,7 +192,7 @@ class _MatchingPageState extends State<MatchingPage> {
     sub = reqRef.snapshots().listen((snapshot) {
       if (!snapshot.exists) return;
       final status = snapshot.data()?['status'];
-      if (status == 'accepted' || status == 'rejected' || status == 'timeout') {
+      if (status == 'picked' || status == 'rejected' || status == 'timeout') {
         if (!completer.isCompleted) completer.complete();
       }
     });
@@ -159,7 +208,7 @@ class _MatchingPageState extends State<MatchingPage> {
     if (!mounted) return;
 
     final jobDoc = await FirebaseFirestore.instance.collection('jobs').doc(widget.jobId).get();
-    if (jobDoc['status'] == 'accepted') return;
+    if (jobDoc.data()?['status'] == 'picked' || jobDoc.data()?['status'] == 'cancelled' || jobDoc.data()?['status'] == 'closed') return;
 
     // 4. Mark request as timeout if it was still pending
     final currentReq = await reqRef.get();
@@ -225,6 +274,7 @@ class _MatchingPageState extends State<MatchingPage> {
                     try {
                       await FirebaseFirestore.instance.collection('jobs').doc(widget.jobId).update({
                         'status': 'cancelled',
+                        'updatedAt': FieldValue.serverTimestamp(),
                       });
                       if (context.mounted) Navigator.pop(context);
                     } catch (e) {

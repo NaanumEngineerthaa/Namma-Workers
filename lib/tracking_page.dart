@@ -1,10 +1,11 @@
 import 'dart:math';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-class TrackingPage extends StatelessWidget {
+class TrackingPage extends StatefulWidget {
   final String jobId;
   final String workerId;
   final double userLat;
@@ -19,6 +20,52 @@ class TrackingPage extends StatelessWidget {
   });
 
   @override
+  State<TrackingPage> createState() => _TrackingPageState();
+}
+
+class _TrackingPageState extends State<TrackingPage> {
+  StreamSubscription? _jobStatusSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _listenToJobStatus();
+  }
+
+  @override
+  void dispose() {
+    _jobStatusSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _listenToJobStatus() {
+    _jobStatusSubscription = FirebaseFirestore.instance
+        .collection('jobs')
+        .doc(widget.jobId)
+        .snapshots()
+        .listen((snapshot) {
+      if (!snapshot.exists) return;
+      
+      final data = snapshot.data() as Map<String, dynamic>;
+      final status = data['status'];
+
+      // If the job is cancelled, completed, or closed by the worker or system
+      if (status == 'cancelled' || status == 'completed' || status == 'closed') {
+        if (mounted) {
+          Navigator.popUntil(context, (route) => route.isFirst);
+          String message = "Job was $status";
+          if (status == 'completed') message = "Job Completed! 🎉";
+          if (status == 'cancelled') message = "Job Cancelled 🔴";
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(message), backgroundColor: status == 'completed' ? Colors.green : Colors.redAccent),
+          );
+        }
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -29,7 +76,7 @@ class TrackingPage extends StatelessWidget {
         leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => Navigator.popUntil(context, (route) => route.isFirst)),
       ),
       body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('users').doc(workerId).snapshots(),
+        stream: FirebaseFirestore.instance.collection('users').doc(widget.workerId).snapshots(),
         builder: (context, snapshot) {
           if (!snapshot.hasData || !snapshot.data!.exists) {
             return const Center(child: CircularProgressIndicator());
@@ -41,14 +88,14 @@ class TrackingPage extends StatelessWidget {
           final workerName = data['name'] ?? "Worker";
 
           // Calculate distance and ETA
-          final dist = _calculateDistance(userLat, userLng, workerLat, workerLng);
+          final dist = _calculateDistance(widget.userLat, widget.userLng, workerLat, workerLng);
           final etaMinutes = (dist / 30) * 60; // 30km/h avg speed
 
           return Stack(
             children: [
               FlutterMap(
                 options: MapOptions(
-                  initialCenter: LatLng((userLat + workerLat)/2, (userLng + workerLng)/2),
+                  initialCenter: LatLng((widget.userLat + workerLat)/2, (widget.userLng + workerLng)/2),
                   initialZoom: 14,
                 ),
                 children: [
@@ -59,7 +106,7 @@ class TrackingPage extends StatelessWidget {
                   PolylineLayer(
                     polylines: [
                       Polyline(
-                        points: [LatLng(userLat, userLng), LatLng(workerLat, workerLng)],
+                        points: [LatLng(widget.userLat, widget.userLng), LatLng(workerLat, workerLng)],
                         color: Colors.blue.withAlpha(200),
                         strokeWidth: 4,
                         isDotted: true,
@@ -70,7 +117,7 @@ class TrackingPage extends StatelessWidget {
                     markers: [
                       // User Marker
                       Marker(
-                        point: LatLng(userLat, userLng),
+                        point: LatLng(widget.userLat, widget.userLng),
                         width: 80,
                         height: 80,
                         child: const Icon(Icons.person, color: Colors.blue, size: 40),
@@ -143,7 +190,7 @@ class TrackingPage extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(workerName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                                const Text("Electrician • On the way", style: TextStyle(color: Colors.grey, fontSize: 13)),
+                                const Text("Service Provider • On the way", style: TextStyle(color: Colors.grey, fontSize: 13)),
                               ],
                             ),
                           ),
@@ -168,13 +215,14 @@ class TrackingPage extends StatelessWidget {
                           if (confirm == true) {
                             try {
                               // 1. Update job status
-                              await FirebaseFirestore.instance.collection('jobs').doc(jobId).update({
+                              await FirebaseFirestore.instance.collection('jobs').doc(widget.jobId).update({
                                 'status': 'cancelled',
                                 'cancelledAt': FieldValue.serverTimestamp(),
+                                'updatedAt': FieldValue.serverTimestamp(),
                               });
 
                               // 2. Mark worker as NOT busy
-                              await FirebaseFirestore.instance.collection('users').doc(workerId).update({
+                              await FirebaseFirestore.instance.collection('users').doc(widget.workerId).update({
                                 'isBusy': false,
                               });
 
@@ -191,6 +239,49 @@ class TrackingPage extends StatelessWidget {
                         },
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.red[50], foregroundColor: Colors.red, minimumSize: const Size(double.infinity, 50), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
                         child: const Text("Cancel Booking", style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                      const SizedBox(height: 12),
+                      ElevatedButton(
+                        onPressed: () async {
+                          bool? confirm = await showDialog(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text("Complete Booking?"),
+                              content: const Text("Has the worker completed the job?"),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("No")),
+                                TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Yes, Complete", style: TextStyle(color: Colors.green))),
+                              ],
+                            ),
+                          );
+
+                          if (confirm == true) {
+                            try {
+                              // Update job status
+                              await FirebaseFirestore.instance.collection('jobs').doc(widget.jobId).update({
+                                'status': 'completed',
+                                'completedAt': FieldValue.serverTimestamp(),
+                                'updatedAt': FieldValue.serverTimestamp(),
+                              });
+
+                              // Mark worker as NOT busy
+                              await FirebaseFirestore.instance.collection('users').doc(widget.workerId).update({
+                                'isBusy': false,
+                              });
+
+                              if (context.mounted) {
+                                Navigator.popUntil(context, (route) => route.isFirst);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text("Job Completed! 🎉"), backgroundColor: Colors.green),
+                                );
+                              }
+                            } catch (e) {
+                              debugPrint("Error completing: $e");
+                            }
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green[50], foregroundColor: Colors.green, minimumSize: const Size(double.infinity, 50), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), elevation: 0),
+                        child: const Text("Mark as Completed", style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
                     ],
                   ),

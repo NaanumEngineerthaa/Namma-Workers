@@ -228,8 +228,9 @@ class _ScheduledRequestsPageState extends State<ScheduledRequestsPage> {
     
     await FirebaseFirestore.instance.collection('jobs').doc(jobId).update({
       'workerId': user.uid,
-      'status': 'accepted',
+      'status': 'picked',
       'acceptedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
     });
 
     if (mounted) {

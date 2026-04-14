@@ -164,87 +164,115 @@ class WorkerLivePage extends StatelessWidget {
 
           // 📩 JOB REQUESTS LIST
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('jobs')
-                  .where('workerId', isEqualTo: user?.uid)
-                  .where('status', isEqualTo: 'pending')
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+            child: StreamBuilder<DocumentSnapshot>(
+              stream: FirebaseFirestore.instance.collection('users').doc(user?.uid).snapshots(),
+              builder: (context, userSnapshot) {
+                if (!userSnapshot.hasData) return const Center(child: CircularProgressIndicator());
+                
+                final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
+                final workerProfession = userData?['profession'] ?? '';
 
-                final jobs = snapshot.data?.docs ?? [];
+                return StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('jobs')
+                      .where('workerId', isEqualTo: user?.uid)
+                      .where('status', isEqualTo: 'picked')
+                      .snapshots(),
+                  builder: (context, pickedSnapshot) {
+                    final hasPickedJob = pickedSnapshot.hasData && pickedSnapshot.data!.docs.isNotEmpty;
 
-                if (jobs.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.inbox_outlined, size: 64, color: Colors.grey[300]),
-                        const SizedBox(height: 16),
-                        Text(
-                          "No active job requests",
-                          style: TextStyle(color: Colors.grey[500], fontSize: 16),
-                        ),
-                      ],
-                    ),
-                  );
-                }
+                    return StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('jobs')
+                          .where('status', isEqualTo: 'active')
+                          .where('profession', isEqualTo: workerProfession)
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator());
+                        }
 
-                return ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  itemCount: jobs.length,
-                  itemBuilder: (context, index) {
-                    final jobDoc = jobs[index];
-                    final job = jobDoc.data() as Map<String, dynamic>;
+                        final jobs = snapshot.data?.docs ?? [];
 
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(
-                            job['title'] ?? "Job Request",
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  const Icon(Icons.location_on, size: 14, color: Colors.red),
-                                  const SizedBox(width: 4),
-                                  Expanded(child: Text(job['location'] ?? "N/A", maxLines: 1, overflow: TextOverflow.ellipsis)),
-                                ],
+                        if (jobs.isEmpty) {
+                          return Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.inbox_outlined, size: 64, color: Colors.grey[300]),
+                                const SizedBox(height: 16),
+                                Text(
+                                  "No active job requests",
+                                  style: TextStyle(color: Colors.grey[500], fontSize: 16),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+
+                        return ListView.builder(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          itemCount: jobs.length,
+                          itemBuilder: (context, index) {
+                            final jobDoc = jobs[index];
+                            final job = jobDoc.data() as Map<String, dynamic>;
+
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  title: Text(
+                                    job['profession'] ?? job['title'] ?? "Job Request",
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                                  ),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        children: [
+                                          const Icon(Icons.location_on, size: 14, color: Colors.red),
+                                          const SizedBox(width: 4),
+                                          Expanded(child: Text(job['location'] ?? "N/A", maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text("Price: ₹${job['amount'] ?? job['price'] ?? 'TBD'}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600)),
+                                    ],
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.close, color: Colors.red),
+                                        onPressed: () {
+                                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ignored from list.")));
+                                        },
+                                      ),
+                                      IconButton(
+                                        icon: Icon(Icons.check, color: hasPickedJob ? Colors.grey : Colors.green),
+                                        onPressed: hasPickedJob ? null : () async {
+                                          await jobDoc.reference.update({
+                                            'status': 'picked',
+                                            'workerId': user?.uid,
+                                            'updatedAt': FieldValue.serverTimestamp(),
+                                          });
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Job picked!")));
+                                          }
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
                               ),
-                              const SizedBox(height: 4),
-                              Text("Price: ₹${job['price'] ?? 'TBD'}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600)),
-                            ],
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.close, color: Colors.red),
-                                onPressed: () {
-                                  jobDoc.reference.update({'status': 'rejected'});
-                                },
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.check, color: Colors.green),
-                                onPressed: () {
-                                  jobDoc.reference.update({'status': 'accepted'});
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                            );
+                          },
+                        );
+                      },
                     );
                   },
                 );
