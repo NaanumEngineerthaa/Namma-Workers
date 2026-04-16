@@ -5,8 +5,13 @@ import 'map_confirm_page.dart';
 
 class LocationChoicePage extends StatelessWidget {
   final String service;
+  final bool isScheduled;
 
-  const LocationChoicePage({super.key, required this.service});
+  const LocationChoicePage({
+    super.key, 
+    required this.service, 
+    this.isScheduled = false
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +64,7 @@ class LocationChoicePage extends StatelessWidget {
                         service: service,
                         lat: position.latitude,
                         lng: position.longitude,
+                        isScheduled: isScheduled,
                       ),
                     ),
                   );
@@ -83,7 +89,7 @@ class LocationChoicePage extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => ManualLocationPicker(service: service),
+                    builder: (_) => ManualLocationPicker(service: service, isScheduled: isScheduled),
                   ),
                 );
               },

@@ -112,6 +112,13 @@ class _MatchingPageState extends State<MatchingPage> {
     setState(() => _statusText = "Finding nearest ${widget.service}s...");
 
     try {
+      // Fetch job price to include in requests for history
+      final jobDoc = await FirebaseFirestore.instance.collection('jobs').doc(widget.jobId).get();
+      final jobData = jobDoc.data() ?? {};
+      final amount = jobData['amount'] ?? jobData['price'] ?? 0;
+      final hours = jobData['hours'];
+      final tip = jobData['tip'];
+
       final workersSnapshot = await FirebaseFirestore.instance
           .collection('users')
           .where('role', isEqualTo: 'worker')
@@ -130,19 +137,20 @@ class _MatchingPageState extends State<MatchingPage> {
 
       List<QueryDocumentSnapshot> workers = workersSnapshot.docs;
       workers.sort((a, b) {
-        final d1 = _calculateDistance(widget.userLat, widget.userLng, a['latitude'], a['longitude']);
-        final d2 = _calculateDistance(widget.userLat, widget.userLng, b['latitude'], b['longitude']);
+        final d1 = _calculateDistance(widget.userLat, widget.userLng, (a.data() as Map)['latitude'], (a.data() as Map)['longitude']);
+        final d2 = _calculateDistance(widget.userLat, widget.userLng, (b.data() as Map)['latitude'], (b.data() as Map)['longitude']);
         return d1.compareTo(d2);
       });
 
-      tryWorkersSequentially(workers, 0);
+      tryWorkersSequentially(workers, 0, amount, hours, tip);
 
     } catch (e) {
+      debugPrint("Error matching: $e");
       setState(() => _statusText = "Error matching workers: $e");
     }
   }
 
-  Future<void> tryWorkersSequentially(List<QueryDocumentSnapshot> workers, int index) async {
+  Future<void> tryWorkersSequentially(List<QueryDocumentSnapshot> workers, int index, dynamic amount, dynamic hours, dynamic tip) async {
     if (index >= workers.length) {
       if (mounted) {
         setState(() {
@@ -161,7 +169,7 @@ class _MatchingPageState extends State<MatchingPage> {
 
     if (workerData == null || workerData['isOnline'] != true || workerData['isBusy'] == true) {
       // Skip this worker and try next
-      tryWorkersSequentially(workers, index + 1);
+      tryWorkersSequentially(workers, index + 1, amount, hours, tip);
       return;
     }
 
@@ -174,10 +182,13 @@ class _MatchingPageState extends State<MatchingPage> {
       'jobId': widget.jobId,
       'workerId': workerId,
       'status': 'pending',
+      'amount': amount,
       'createdAt': FieldValue.serverTimestamp(),
       'expiresAt': Timestamp.fromDate(DateTime.now().add(const Duration(minutes: 5))),
       'customerName': FirebaseAuth.instance.currentUser?.displayName ?? 'Customer',
       'service': widget.service,
+      'hours': hours,
+      'tip': tip,
     });
 
     // 2. Track in main job doc
@@ -217,7 +228,7 @@ class _MatchingPageState extends State<MatchingPage> {
     }
 
     // 5. Try next worker
-    tryWorkersSequentially(workers, index + 1);
+    tryWorkersSequentially(workers, index + 1, amount, hours, tip);
   }
 
   double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {

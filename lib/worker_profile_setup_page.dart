@@ -24,7 +24,6 @@ class _WorkerProfileSetupPageState extends State<WorkerProfileSetupPage> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _experienceController = TextEditingController();
-  final _hourlyController = TextEditingController();
   String? _selectedProfession;
   File? _imageFile;
   String? _currentPhotoUrl;
@@ -50,7 +49,6 @@ class _WorkerProfileSetupPageState extends State<WorkerProfileSetupPage> {
     if (widget.initialData != null) {
       _nameController.text = widget.initialData!['name'] ?? '';
       _experienceController.text = widget.initialData!['experience']?.toString() ?? '';
-      _hourlyController.text = widget.initialData!['hourlyRate']?.toString() ?? '';
       _selectedProfession = widget.initialData!['profession'];
       _currentPhotoUrl = widget.initialData!['photoUrl'];
     } else {
@@ -112,7 +110,6 @@ class _WorkerProfileSetupPageState extends State<WorkerProfileSetupPage> {
         'uid': user.uid,
         'name': _nameController.text.trim(),
         'experience': int.tryParse(_experienceController.text.trim()) ?? 0,
-        'hourlyRate': int.tryParse(_hourlyController.text.trim()) ?? 0,
         'profession': _selectedProfession,
         'photoUrl': photoUrl,
         'email': user.email,
@@ -258,17 +255,6 @@ class _WorkerProfileSetupPageState extends State<WorkerProfileSetupPage> {
                       ),
                       keyboardType: TextInputType.number,
                       validator: (value) => value == null || value.isEmpty ? 'Please enter experience' : null,
-                    ),
-                    const SizedBox(height: 20),
-                    TextFormField(
-                      controller: _hourlyController,
-                      decoration: InputDecoration(
-                        labelText: 'Hourly Charge (₹)',
-                        prefixIcon: const Icon(Icons.payments_outlined),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      keyboardType: TextInputType.number,
-                      validator: (value) => value == null || value.isEmpty ? 'Please enter hourly rate' : null,
                     ),
                     const SizedBox(height: 40),
                     ElevatedButton(

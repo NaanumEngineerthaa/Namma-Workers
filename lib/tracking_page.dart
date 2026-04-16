@@ -83,8 +83,8 @@ class _TrackingPageState extends State<TrackingPage> {
           }
 
           final data = snapshot.data!.data() as Map<String, dynamic>;
-          final workerLat = (data['latitude'] as num).toDouble();
-          final workerLng = (data['longitude'] as num).toDouble();
+          final workerLat = (data['latitude'] as num?)?.toDouble() ?? widget.userLat;
+          final workerLng = (data['longitude'] as num?)?.toDouble() ?? widget.userLng;
           final workerName = data['name'] ?? "Worker";
 
           // Calculate distance and ETA

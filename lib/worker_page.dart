@@ -13,6 +13,7 @@ import 'live_requests_page.dart';
 import 'scheduled_requests_page.dart';
 import 'worker_history_page.dart';
 import 'login_page.dart';
+import 'theme.dart';
 
 class WorkerPage extends StatefulWidget {
   const WorkerPage({super.key});
@@ -98,7 +99,7 @@ class _WorkerPageState extends State<WorkerPage> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => IncomingJobDialog(requestDoc: requestDoc),
+      builder: (context) => IncomingJobDialog(requestDoc: requestDoc, isOnline: _isOnline),
     );
   }
 
@@ -249,6 +250,18 @@ class _WorkerPageState extends State<WorkerPage> {
   Future<void> _acceptJob(String jobId, Map<String, dynamic> jobData) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+
+    if (!_isOnline) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("You must be ONLINE to accept jobs! 🔴"),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+      return;
+    }
 
     final type = jobData['type'] ?? 'live';
 
@@ -430,9 +443,11 @@ class _WorkerPageState extends State<WorkerPage> {
       }, SetOptions(merge: true));
     }
 
-    setState(() {
-      _isOnline = false;
-    });
+    if (mounted) {
+      setState(() {
+        _isOnline = false;
+      });
+    }
     debugPrint("🛑 Location tracking stopped");
   }
 
@@ -477,11 +492,10 @@ class _WorkerPageState extends State<WorkerPage> {
       return const LoginPage();
     }
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
         title: Text(_getPageTitle(), style: const TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
@@ -491,13 +505,17 @@ class _WorkerPageState extends State<WorkerPage> {
           IconButton(onPressed: () {}, icon: const Icon(Icons.notifications_none)),
         ],
       ),
-      body: _buildCurrentPage(),
-      floatingActionButton: (_currentIndex == 0 || _currentIndex == 1)
+      body: Container(
+        decoration: const BoxDecoration(gradient: AppTheme.bgGlowingEffect),
+        child: _buildCurrentPage(),
+      ),
+      floatingActionButton: (_currentIndex == 0)
           ? FloatingActionButton.extended(
               onPressed: _toggleOnlineStatus,
               label: Text(_isOnline ? "Go Offline" : "Go Online"),
               icon: Icon(_isOnline ? Icons.power_settings_new : Icons.play_arrow),
               backgroundColor: _isOnline ? Colors.green : Colors.redAccent,
+              foregroundColor: Colors.white,
             )
           : null,
       bottomNavigationBar: BottomNavigationBar(
@@ -508,8 +526,9 @@ class _WorkerPageState extends State<WorkerPage> {
           });
         },
         type: BottomNavigationBarType.fixed,
-        selectedItemColor: Colors.orange[800],
-        unselectedItemColor: Colors.grey,
+        selectedItemColor: AppTheme.primaryColor,
+        unselectedItemColor: AppTheme.unselectedColor,
+        backgroundColor: Colors.white,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.dashboard_rounded), label: "Dashboard"),
           BottomNavigationBarItem(icon: Icon(Icons.wifi_rounded), label: "Live"),
@@ -614,8 +633,21 @@ class _WorkerPageState extends State<WorkerPage> {
               ),
               const SizedBox(height: 32),
               _buildProfileTile(Icons.work_rounded, "Profession", data['profession'] ?? 'N/A'),
+              FutureBuilder<DocumentSnapshot>(
+                future: FirebaseFirestore.instance.collection('pricing').doc(data['profession'] ?? 'Other').get(),
+                builder: (context, priceSnapshot) {
+                  String priceText = "₹... / hr";
+                  if (priceSnapshot.hasData && priceSnapshot.data!.exists) {
+                    final priceData = priceSnapshot.data!.data() as Map<String, dynamic>;
+                    priceText = "₹${priceData['pricePerHour'] ?? 0} / hr";
+                  }
+                  return _buildProfileTile(Icons.payments_rounded, "Hourly Price", priceText);
+                },
+              ),
               _buildProfileTile(Icons.history_edu_rounded, "Experience", "${data['experience'] ?? 0} Years"),
               _buildProfileTile(Icons.star_rounded, "Rating", (data['rating'] ?? 5.0).toString()),
+              _buildProfileTile(Icons.work_outline, "Total Jobs", "${data['totalJobs'] ?? 0}"),
+              _buildProfileTile(Icons.email_outlined, "Email", data['email'] ?? FirebaseAuth.instance.currentUser?.email ?? ""),
               const SizedBox(height: 40),
               SizedBox(
                 width: double.infinity,
@@ -1000,12 +1032,28 @@ class _WorkerPageState extends State<WorkerPage> {
         final docs = snapshot.data!.docs;
         if (docs.isEmpty) return _buildEmptyState("No live requests currently");
 
-        // 🔥 Filter by profession in memory to avoid new index requirements
-        final filteredDocs = docs.where((doc) {
-          final title = (doc['title'] ?? '').toString().toLowerCase();
+        final now = DateTime.now();
+        List<DocumentSnapshot> validFilteredDocs = [];
+
+        for (var doc in docs) {
+          final data = doc.data() as Map<String, dynamic>;
+          final title = (data['title'] ?? '').toString().toLowerCase();
           final prof = profession.toLowerCase();
-          return title.contains(prof) || prof.contains(title);
-        }).toList();
+          
+          if (title.contains(prof) || prof.contains(title)) {
+            final expiresAtField = (data['expiresAt'] as Timestamp?)?.toDate();
+            final createdAt = (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+            final effectiveExpiresAt = expiresAtField ?? createdAt.add(const Duration(minutes: 30));
+
+            if (now.isAfter(effectiveExpiresAt)) {
+              doc.reference.update({'status': 'closed', 'closedAt': FieldValue.serverTimestamp()});
+            } else {
+              validFilteredDocs.add(doc);
+            }
+          }
+        }
+
+        final filteredDocs = validFilteredDocs;
 
         if (filteredDocs.isEmpty) return _buildEmptyState("No requests matching your profession ($profession)");
 
@@ -1028,8 +1076,8 @@ class _WorkerPageState extends State<WorkerPage> {
               itemCount: displayDocs.length,
               itemBuilder: (context, index) => _buildJobCard(
                 displayDocs[index], 
-                isDisabled: alreadyHasLiveJob,
-                disabledReason: "Already has active live job",
+                isDisabled: alreadyHasLiveJob || !_isOnline,
+                disabledReason: alreadyHasLiveJob ? "Already has active live job" : (!_isOnline ? "Go ONLINE to accept requests" : null),
               ),
             ),
             if (hasMore)
@@ -1077,7 +1125,7 @@ class _WorkerPageState extends State<WorkerPage> {
       stream: FirebaseFirestore.instance
           .collection('jobs')
           .where('type', isEqualTo: 'scheduled')
-          .where('status', isEqualTo: 'pending')
+          .where('status', whereIn: ['active', 'pending'])
           .snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
@@ -1093,12 +1141,24 @@ class _WorkerPageState extends State<WorkerPage> {
           final isMatch = title.contains(prof) || prof.contains(title);
           if (!isMatch) return false;
 
+          // 1.5 Filter and auto-close if expired
+          final expiresAtField = (pData['expiresAt'] as Timestamp?)?.toDate();
+          final createdAt = (pData['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+          final startFallback = (pData['startTime'] as Timestamp?)?.toDate() ?? createdAt;
+          final effectiveExpiresAt = expiresAtField ?? startFallback.add(Duration(hours: pData['hours'] ?? 1));
+
+          if (DateTime.now().isAfter(effectiveExpiresAt)) {
+             pendingDoc.reference.update({'status': 'closed', 'closedAt': FieldValue.serverTimestamp()});
+             return false;
+          }
+
           // 2. Conflict check
           final pStart = (pData['startTime'] as Timestamp?)?.toDate();
           final pEnd = (pData['endTime'] as Timestamp?)?.toDate();
 
           if (pStart == null || pEnd == null) return false;
 
+          /*
           for (var activeDoc in activeJobs) {
             final aData = activeDoc.data() as Map<String, dynamic>;
             final aStart = (aData['startTime'] as Timestamp?)?.toDate();
@@ -1110,6 +1170,7 @@ class _WorkerPageState extends State<WorkerPage> {
               }
             }
           }
+          */
           return true;
         }).toList();
 
@@ -1131,7 +1192,11 @@ class _WorkerPageState extends State<WorkerPage> {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: displayDocs.length,
-              itemBuilder: (context, index) => _buildJobCard(displayDocs[index]),
+              itemBuilder: (context, index) => _buildJobCard(
+                displayDocs[index], 
+                isDisabled: !_isOnline,
+                disabledReason: !_isOnline ? "Go ONLINE to accept requests" : null,
+              ),
             ),
             if (hasMore)
               Padding(
@@ -1296,9 +1361,18 @@ class _WorkerPageState extends State<WorkerPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          "Goal: ₹$target",
-          style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              "Goal: ₹$target",
+              style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold),
+            ),
+            GestureDetector(
+              onTap: _showTargetEditDialog,
+              child: const Icon(Icons.edit, color: Colors.white70, size: 14),
+            ),
+          ],
         ),
         const SizedBox(height: 4),
         Container(
@@ -1320,6 +1394,47 @@ class _WorkerPageState extends State<WorkerPage> {
           ),
         ),
       ],
+    );
+  }
+
+  Future<void> _showTargetEditDialog() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    final currentTarget = doc.data()?['monthlyTarget'] ?? 15000;
+    final controller = TextEditingController(text: currentTarget.toString());
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Set Monthly Goal"),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: "Target Amount (₹)",
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () async {
+              final newTarget = int.tryParse(controller.text);
+              if (newTarget != null && newTarget > 0) {
+                await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+                  'monthlyTarget': newTarget,
+                });
+                if (context.mounted) Navigator.pop(context);
+              }
+            },
+            child: const Text("Update"),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1406,7 +1521,17 @@ class _WorkerPageState extends State<WorkerPage> {
                     Text(distanceStr, style: const TextStyle(fontSize: 12, color: Colors.blueGrey, fontWeight: FontWeight.w500)),
                   ],
                 ),
-                Text("₹$price", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text("₹$price", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
+                    if (data['hours'] != null)
+                      Text(
+                        "${data['hours']} hr${data['hours'] > 1 ? 's' : ''} ${data['tip'] != null && data['tip'] > 0 ? '+ ₹${data['tip']} tip' : ''}",
+                        style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                      )
+                  ],
+                ),
               ],
             ),
             const SizedBox(height: 12),
@@ -1542,117 +1667,6 @@ class _WorkerPageState extends State<WorkerPage> {
   }
 
 
-  Widget _buildSettingsPage() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return const Center(child: Text("Not logged in"));
-
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (!snapshot.hasData || !snapshot.data!.exists) {
-          return const Center(child: Text("Profile not found"));
-        }
-
-        final data = snapshot.data!.data() as Map<String, dynamic>;
-        final name = data['name'] ?? 'Worker';
-        final profession = data['profession'] ?? 'Service Provider';
-        final experience = data['experience'] ?? '0';
-        final photoUrl = data['photoUrl'];
-
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            children: [
-              CircleAvatar(
-                radius: 60,
-                backgroundColor: Colors.orange[50],
-                backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
-                child: photoUrl == null ? Icon(Icons.person, size: 60, color: Colors.orange[200]) : null,
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    name,
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(Icons.edit, size: 20, color: Colors.grey),
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => WorkerProfileSetupPage(
-                            initialData: data,
-                            isEditing: true,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.orange[50],
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  profession,
-                  style: TextStyle(color: Colors.orange[800], fontWeight: FontWeight.w600),
-                ),
-              ),
-              const SizedBox(height: 24),
-              _buildSettingItem(Icons.history, "Experience", "$experience Years"),
-              _buildSettingItem(Icons.payments_outlined, "Hourly Charge", "₹${data['hourlyRate'] ?? 0} / hr"),
-              _buildSettingItem(Icons.star_outline, "Rating", "${data['rating'] ?? 5.0}"),
-              _buildSettingItem(Icons.work_outline, "Total Jobs", "${data['totalJobs'] ?? 0}"),
-              _buildSettingItem(Icons.email_outlined, "Email", user.email ?? ""),
-              const SizedBox(height: 40),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => FirebaseAuth.instance.signOut(),
-                  icon: const Icon(Icons.logout),
-                  label: const Text("Logout"),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    foregroundColor: Colors.red,
-                    side: const BorderSide(color: Colors.red),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildSettingItem(IconData icon, String title, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12.0),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.grey[600], size: 24),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Text(title, style: TextStyle(color: Colors.grey[600], fontSize: 16)),
-          ),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        ],
-      ),
-    );
-  }
-
   Widget _buildSchedulePage() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const Center(child: Text("Please Login"));
@@ -1675,8 +1689,9 @@ class _WorkerPageState extends State<WorkerPage> {
 
 class IncomingJobDialog extends StatefulWidget {
   final DocumentSnapshot requestDoc;
+  final bool isOnline;
 
-  const IncomingJobDialog({super.key, required this.requestDoc});
+  const IncomingJobDialog({super.key, required this.requestDoc, required this.isOnline});
 
   @override
   State<IncomingJobDialog> createState() => _IncomingJobDialogState();
@@ -1710,6 +1725,15 @@ class _IncomingJobDialogState extends State<IncomingJobDialog> {
   }
 
   Future<void> _accept() async {
+    if (!widget.isOnline) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("You must be ONLINE to accept jobs! 🔴"), backgroundColor: Colors.redAccent),
+        );
+        Navigator.pop(context);
+      }
+      return;
+    }
     final req = widget.requestDoc;
     final jobId = req['jobId'];
     final workerId = req['workerId'];
@@ -1750,6 +1774,11 @@ class _IncomingJobDialogState extends State<IncomingJobDialog> {
     String minutes = (_secondsLeft ~/ 60).toString();
     String seconds = (_secondsLeft % 60).toString().padLeft(2, '0');
 
+    final reqData = widget.requestDoc.data() as Map<String, dynamic>? ?? {};
+    final price = reqData['amount'] ?? 0;
+    final hours = reqData['hours'];
+    final tip = reqData['tip'];
+
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       title: const Row(
@@ -1764,6 +1793,16 @@ class _IncomingJobDialogState extends State<IncomingJobDialog> {
         children: [
           Text("Service Needed:", style: TextStyle(color: Colors.grey[600], fontSize: 14)),
           Text(widget.requestDoc['service'] ?? 'Live Help', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.blue)),
+          const SizedBox(height: 12),
+          Text(
+            "₹$price", 
+            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.green)
+          ),
+          if (hours != null)
+            Text(
+              "$hours hr${hours > 1 ? 's' : ''} ${tip != null && tip > 0 ? '+ ₹$tip tip' : ''}",
+              style: TextStyle(color: Colors.grey[600], fontSize: 13),
+            ),
           const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(16),

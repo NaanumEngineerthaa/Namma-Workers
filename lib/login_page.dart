@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'theme.dart';
+import 'widgets/loading_screen.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -19,7 +21,6 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       final GoogleSignIn googleSignIn = GoogleSignIn();
-      // This line forces the account selection dialog to appear
       await googleSignIn.signOut(); 
       
       final googleUser = await googleSignIn.signIn();
@@ -37,18 +38,10 @@ class _LoginPageState extends State<LoginPage> {
       await FirebaseAuth.instance.signInWithCredential(credential);
     } catch (e) {
       if (mounted) {
-        String errorMsg = e.toString();
-        if (errorMsg.contains('12500')) {
-          errorMsg = "Google Sign-In failed (Code 12500). Please check if your SHA-1 fingerprint is added in Firebase Console.";
-        } else if (errorMsg.contains('10')) {
-            errorMsg = "Google Sign-In failed (Code 10). Possible SHA-1/package name mismatch in Firebase.";
-        }
-        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Failed to sign in: $errorMsg"),
+            content: Text("Failed to sign in: ${e.toString()}"),
             backgroundColor: Colors.redAccent,
-            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -63,25 +56,18 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Safety check: if already logged in, the parent StreamBuilder should handle this,
-    // but we add this here as a backup to prevent being stuck on the Login screen.
-    if (FirebaseAuth.instance.currentUser != null) {
-      // We don't return another widget because that might cause nested MaterialApps
-      // or navigation issues. Instead, we let the StreamBuilder in main.dart do its job.
-      // But we can add a small log or a direct push if it's really stuck.
+    if (_isLoading) {
+      return const PremiumLoadingScreen(message: "Signing you in...");
     }
-    
+
     return Scaffold(
       body: Container(
         width: double.infinity,
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.indigo[900]!,
-              Colors.indigo[600]!,
-            ],
+            colors: [Color(0xFF6A11CB), Color(0xFF2575FC)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
         ),
         child: SafeArea(
@@ -90,19 +76,32 @@ class _LoginPageState extends State<LoginPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Hero(
+                Hero(
                   tag: 'logo',
-                  child: Icon(Icons.handyman_outlined, color: Colors.white, size: 80),
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withAlpha(50), blurRadius: 20, offset: const Offset(0, 10))
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(24),
+                      child: Image.asset('assets/logo.png', height: 100, width: 100),
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 32),
                 const Text(
                   "Namma\nWorkers",
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 48,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w800,
                     height: 1.1,
+                    letterSpacing: -1,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -115,30 +114,27 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                 ),
                 const SizedBox(height: 60),
-                if (_isLoading)
-                  const CircularProgressIndicator(color: Colors.white)
-                else
-                  ElevatedButton.icon(
-                    onPressed: signInWithGoogle,
-                    icon: Image.network(
-                      'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_\"G\"_logo.svg/1200px-Google_\"G\"_logo.svg.png',
-                      height: 24,
-                      errorBuilder: (context, error, stackTrace) => const Icon(Icons.login),
-                    ),
-                    label: const Text(
-                      "Continue with Google",
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black87,
-                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
-                      ),
-                      elevation: 5,
-                    ),
+                ElevatedButton.icon(
+                  onPressed: signInWithGoogle,
+                  icon: Image.network(
+                    'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_\"G\"_logo.svg/1200px-Google_\"G\"_logo.svg.png',
+                    height: 24,
+                    errorBuilder: (context, error, stackTrace) => const Icon(Icons.login),
                   ),
+                  label: const Text(
+                    "Continue with Google",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.black87,
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    elevation: 10,
+                  ),
+                ),
               ],
             ),
           ),

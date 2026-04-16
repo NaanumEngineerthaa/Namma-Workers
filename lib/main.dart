@@ -9,6 +9,9 @@ import 'login_page.dart';
 import 'worker_profile_setup_page.dart';
 import 'customer_profile_setup_page.dart';
 
+import 'theme.dart';
+import 'widgets/loading_screen.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
@@ -25,11 +28,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Namma Workers',
-      theme: ThemeData(
-        useMaterial3: true,
-        fontFamily: 'Inter',
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
-      ),
+      theme: AppTheme.lightTheme,
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
         initialData: FirebaseAuth.instance.currentUser,
@@ -41,11 +40,7 @@ class MyApp extends StatelessWidget {
           }
           
           if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
-            return const Scaffold(
-              body: Center(
-                child: CircularProgressIndicator(),
-              ),
-            );
+            return const PremiumLoadingScreen(message: "Initializing Namma Workers...");
           }
           
           // User logged in
@@ -116,101 +111,162 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
+    Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     
     return Scaffold(
       body: Container(
         width: double.infinity,
-        decoration: BoxDecoration(
+        height: double.infinity,
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
             colors: [
-              Colors.indigo[900]!,
-              Colors.indigo[600]!,
+              Color(0xFF6A1B9A), 
+              Color(0xFF8E24AA),
+              AppTheme.backgroundColor,
             ],
           ),
         ),
         child: Stack(
           children: [
+            // Decorative Background Circles
+            Positioned(
+              top: -100,
+              right: -50,
+              child: Container(
+                width: 300,
+                height: 300,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withAlpha(20),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: -50,
+              left: -50,
+              child: Container(
+                width: 200,
+                height: 200,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppTheme.primaryColor.withAlpha(30),
+                ),
+              ),
+            ),
+            
             SafeArea(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 40.0),
+                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 30.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Hero(
+                        Hero(
                           tag: 'logo',
-                          child: Icon(Icons.handyman_outlined, color: Colors.white, size: 48),
+                          child: Container(
+                            width: 65,
+                            height: 65,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withAlpha(30),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 10),
+                                ),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(20),
+                              child: Image.asset('assets/logo.png', fit: BoxFit.cover),
+                            ),
+                          ),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.logout, color: Colors.white),
-                          onPressed: () async {
-                            await FirebaseAuth.instance.signOut();
-                          },
-                          tooltip: 'Logout',
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withAlpha(30),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: IconButton(
+                            icon: const Icon(Icons.logout_rounded, color: Colors.white, size: 22),
+                            onPressed: () async {
+                              await FirebaseAuth.instance.signOut();
+                            },
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 32),
                     Text(
-                      "Hello, ${user?.displayName?.split(' ').first ?? 'User'}",
+                      "Hello, ${user?.displayName?.split(' ').first ?? 'User'} 👋",
                       style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w500,
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w400,
+                        letterSpacing: 0.5,
                       ),
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      "Namma\nWorkers",
+                      "Welcome to\nNamma Workers",
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 40,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 42,
+                        fontWeight: FontWeight.w900,
                         height: 1.1,
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 16),
                     Text(
-                      "Connecting expert workers with those who need them.",
+                      "Transforming the way you find and provide professional services.",
                       style: TextStyle(
-                        color: Colors.white.withAlpha(200),
-                        fontSize: 18,
+                        color: Colors.white.withAlpha(180),
+                        fontSize: 17,
+                        height: 1.5,
                       ),
                     ),
                     const Spacer(),
-                    const Text(
-                      "Begin Your Journey as",
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
+                    Center(
+                      child: Container(
+                        height: 4,
+                        width: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withAlpha(50),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 24),
+                    const Text(
+                      "HOW WOULD YOU LIKE TO CONTINUE?",
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 2,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
                     _buildRoleCard(
                       context,
-                      title: "I Need a Worker",
-                      subtitle: "Hire local professionals for your home tasks.",
-                      icon: Icons.search_rounded,
-                      color: Colors.white,
-                      textColor: Colors.indigo[900]!,
+                      title: "I Need a Service",
+                      subtitle: "Perfect for home repairs, cleaning & more",
+                      icon: Icons.person_search_rounded,
+                      isPrimary: true,
                       onTap: () => _handleRoleSelection(context, 'customer'),
                     ),
                     const SizedBox(height: 16),
                     _buildRoleCard(
                       context,
-                      title: "I am a Worker",
-                      subtitle: "Find jobs nearby and grow your earnings.",
-                      icon: Icons.work_outline_rounded,
-                      color: Colors.indigo[400]!.withAlpha(100),
-                      border: Border.all(color: Colors.white.withAlpha(50), width: 1),
-                      textColor: Colors.white,
+                      title: "I'm a Professional",
+                      subtitle: "Join our network and start earning today",
+                      icon: Icons.business_center_rounded,
+                      isPrimary: false,
                       onTap: () => _handleRoleSelection(context, 'worker'),
                     ),
                   ],
@@ -218,12 +274,7 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
               ),
             ),
             if (_isNavigating)
-              Container(
-                color: Colors.black.withAlpha(100),
-                child: const Center(
-                  child: CircularProgressIndicator(color: Colors.white),
-                ),
-              ),
+              const PremiumLoadingScreen(message: "Setting up your journey..."),
           ],
         ),
       ),
@@ -235,65 +286,76 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
     required String title,
     required String subtitle,
     required IconData icon,
-    required Color color,
-    required Color textColor,
-    BoxBorder? border,
+    required bool isPrimary,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(24),
-          border: border,
-          boxShadow: color == Colors.white
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withAlpha(50),
-                    blurRadius: 15,
-                    offset: const Offset(0, 10),
-                  ),
-                ]
-              : null,
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: textColor.withAlpha(20),
-                borderRadius: BorderRadius.circular(16),
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 400),
+      tween: Tween<double>(begin: 0.95, end: 1.0),
+      builder: (context, scale, child) {
+        return Transform.scale(
+          scale: scale,
+          child: child,
+        );
+      },
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: isPrimary ? Colors.white : Colors.white.withAlpha(40),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: Colors.white.withAlpha(30), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(isPrimary ? 40 : 10),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
               ),
-              child: Icon(icon, color: textColor, size: 32),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      color: textColor,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      color: textColor.withAlpha(150),
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: isPrimary ? AppTheme.primaryColor.withAlpha(20) : Colors.white.withAlpha(40),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Icon(icon, color: isPrimary ? AppTheme.primaryColor : Colors.white, size: 30),
               ),
-            ),
-            Icon(Icons.arrow_forward_ios_rounded, color: textColor.withAlpha(100), size: 16),
-          ],
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: isPrimary ? AppTheme.textColor : Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: isPrimary ? AppTheme.subtitleColor : Colors.white.withAlpha(180),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios_rounded, 
+                color: isPrimary ? AppTheme.primaryColor.withAlpha(100) : Colors.white.withAlpha(100), 
+                size: 14
+              ),
+            ],
+          ),
         ),
       ),
     );

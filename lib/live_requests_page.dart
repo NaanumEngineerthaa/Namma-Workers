@@ -46,11 +46,28 @@ class _LiveRequestsPageState extends State<LiveRequestsPage> {
           final docs = snapshot.data!.docs;
           if (docs.isEmpty) return _buildEmptyState("No live requests currently");
 
-          final filteredDocs = docs.where((doc) {
-            final title = (doc['title'] ?? '').toString().toLowerCase();
+          final now = DateTime.now();
+          List<DocumentSnapshot> validDocs = [];
+
+          for (var doc in docs) {
+            final data = doc.data() as Map<String, dynamic>;
+            final title = (data['title'] ?? '').toString().toLowerCase();
             final prof = widget.profession.toLowerCase();
-            return title.contains(prof) || prof.contains(title);
-          }).toList();
+            
+            if (title.contains(prof) || prof.contains(title)) {
+              final expiresAtField = (data['expiresAt'] as Timestamp?)?.toDate();
+              final createdAt = (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+              final effectiveExpiresAt = expiresAtField ?? createdAt.add(const Duration(minutes: 30));
+
+              if (now.isAfter(effectiveExpiresAt)) {
+                doc.reference.update({'status': 'closed', 'closedAt': FieldValue.serverTimestamp()});
+              } else {
+                validDocs.add(doc);
+              }
+            }
+          }
+
+          final filteredDocs = validDocs;
 
           if (filteredDocs.isEmpty) return _buildEmptyState("No requests matching your profession");
 

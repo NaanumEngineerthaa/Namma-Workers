@@ -39,34 +39,41 @@ class _ScheduledRequestsPageState extends State<ScheduledRequestsPage> {
         stream: FirebaseFirestore.instance
             .collection('jobs')
             .where('type', isEqualTo: 'scheduled')
-            .where('status', isEqualTo: 'pending')
+            .where('status', whereIn: ['active', 'pending'])
             .snapshots(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
           final docs = snapshot.data!.docs;
           if (docs.isEmpty) return _buildEmptyState("No scheduled jobs found.");
 
-          final filteredDocs = docs.where((pendingDoc) {
+          final now = DateTime.now();
+          List<DocumentSnapshot> validDocs = [];
+
+          for (var pendingDoc in docs) {
             final pData = pendingDoc.data() as Map<String, dynamic>;
             final title = (pData['title'] ?? '').toString().toLowerCase();
             final prof = widget.profession.toLowerCase();
             final isMatch = title.contains(prof) || prof.contains(title);
-            if (!isMatch) return false;
+            if (!isMatch) continue;
+
+            final expiresAtField = (pData['expiresAt'] as Timestamp?)?.toDate();
+            final createdAt = (pData['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+            final startFallback = (pData['startTime'] as Timestamp?)?.toDate() ?? createdAt;
+            final effectiveExpiresAt = expiresAtField ?? startFallback.add(Duration(hours: pData['hours'] ?? 1));
+
+            if (now.isAfter(effectiveExpiresAt)) {
+              pendingDoc.reference.update({'status': 'closed', 'closedAt': FieldValue.serverTimestamp()});
+              continue;
+            }
 
             final pStart = (pData['startTime'] as Timestamp?)?.toDate();
             final pEnd = (pData['endTime'] as Timestamp?)?.toDate();
-            if (pStart == null || pEnd == null) return false;
+            if (pStart == null || pEnd == null) continue;
 
-            for (var activeDoc in widget.activeJobs) {
-              final aData = activeDoc.data() as Map<String, dynamic>;
-              final aStart = (aData['startTime'] as Timestamp?)?.toDate();
-              final aEnd = (aData['endTime'] as Timestamp?)?.toDate();
-              if (aStart != null && aEnd != null) {
-                if (pStart.isBefore(aEnd) && pEnd.isAfter(aStart)) return false; 
-              }
-            }
-            return true;
-          }).toList();
+            validDocs.add(pendingDoc);
+          }
+
+          final filteredDocs = validDocs;
 
           if (filteredDocs.isEmpty) return _buildEmptyState("No requests matching your profession or schedule.");
 
@@ -104,7 +111,9 @@ class _ScheduledRequestsPageState extends State<ScheduledRequestsPage> {
     final data = doc.data() as Map<String, dynamic>;
     final title = data['title'] ?? 'Job';
     final address = data['location'] ?? 'Address N/A';
-    final price = data['price']?.toString() ?? 'TBD';
+    final amount = data['amount']?.toString() ?? data['price']?.toString() ?? 'TBD';
+    final hours = data['hours'];
+    final tip = data['tip'];
     final userId = data['customerId'] ?? data['userId'] ?? '';
     
     String timeDisplay = "TBD";
@@ -152,7 +161,17 @@ class _ScheduledRequestsPageState extends State<ScheduledRequestsPage> {
                   Text(distanceStr, style: const TextStyle(fontSize: 12, color: Colors.blueGrey, fontWeight: FontWeight.w500)),
                 ],
               ),
-              Text("₹$price", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text("₹$amount", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
+                  if (hours != null)
+                    Text(
+                      "$hours hr${hours > 1 ? 's' : ''} ${tip != null && tip > 0 ? '+ ₹$tip tip' : ''}",
+                      style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                    )
+                ],
+              ),
             ],
           ),
           const SizedBox(height: 12),

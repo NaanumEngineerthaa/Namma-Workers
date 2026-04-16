@@ -8,8 +8,13 @@ import 'map_confirm_page.dart';
 
 class ManualLocationPicker extends StatefulWidget {
   final String service;
+  final bool isScheduled;
 
-  const ManualLocationPicker({super.key, required this.service});
+  const ManualLocationPicker({
+    super.key, 
+    required this.service, 
+    this.isScheduled = false
+  });
 
   @override
   State<ManualLocationPicker> createState() => _ManualLocationPickerState();
@@ -189,6 +194,7 @@ class _ManualLocationPickerState extends State<ManualLocationPicker> {
                       service: widget.service,
                       lat: selected.latitude,
                       lng: selected.longitude,
+                      isScheduled: widget.isScheduled,
                     ),
                   ),
                 );

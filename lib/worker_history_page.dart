@@ -54,19 +54,19 @@ class _WorkerHistoryPageState extends State<WorkerHistoryPage> with SingleTicker
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildHistoryList(user.uid, ['completed']),
-          _buildHistoryList(user.uid, ['picked']),
-          _buildHistoryList(user.uid, ['cancelled', 'closed']),
-          _buildHistoryList(user.uid, ['rejected']),
+          _buildHistoryList(user.uid, ['completed'], collection: 'jobs'),
+          _buildHistoryList(user.uid, ['picked'], collection: 'jobs'),
+          _buildHistoryList(user.uid, ['cancelled', 'closed'], collection: 'jobs'),
+          _buildHistoryList(user.uid, ['rejected', 'timeout'], collection: 'job_requests'),
         ],
       ),
     );
   }
 
-  Widget _buildHistoryList(String uid, List<String> statuses) {
+  Widget _buildHistoryList(String uid, List<String> statuses, {required String collection}) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
-          .collection('jobs')
+          .collection(collection)
           .where('workerId', isEqualTo: uid)
           .where('status', whereIn: statuses)
           .snapshots(),
@@ -91,8 +91,10 @@ class _WorkerHistoryPageState extends State<WorkerHistoryPage> with SingleTicker
         final docs = snapshot.data!.docs.toList();
         // Sort by updatedAt descending
         docs.sort((a, b) {
-          final t1 = (a['updatedAt'] as Timestamp?) ?? Timestamp.now();
-          final t2 = (b['updatedAt'] as Timestamp?) ?? Timestamp.now();
+          final dataA = a.data() as Map<String, dynamic>;
+          final dataB = b.data() as Map<String, dynamic>;
+          final t1 = (dataA['updatedAt'] as Timestamp?) ?? (dataA['createdAt'] as Timestamp?) ?? Timestamp.now();
+          final t2 = (dataB['updatedAt'] as Timestamp?) ?? (dataB['createdAt'] as Timestamp?) ?? Timestamp.now();
           return t2.compareTo(t1);
         });
 
@@ -109,8 +111,9 @@ class _WorkerHistoryPageState extends State<WorkerHistoryPage> with SingleTicker
     final data = doc.data() as Map<String, dynamic>;
     final status = data['status'] ?? 'N/A';
     final amount = data['amount'] ?? data['price'] ?? 0;
-    final title = data['title'] ?? data['profession'] ?? "Job Request";
-    final timestamp = (data['updatedAt'] as Timestamp?)?.toDate() ?? DateTime.now();
+    final title = data['title'] ?? data['profession'] ?? data['service'] ?? "Job Request";
+    final Timestamp? ts = data['updatedAt'] as Timestamp? ?? data['createdAt'] as Timestamp?;
+    final timestamp = ts?.toDate() ?? DateTime.now();
 
     Color statusColor = Colors.grey;
     if (status == 'completed') statusColor = Colors.green;
@@ -171,9 +174,19 @@ class _WorkerHistoryPageState extends State<WorkerHistoryPage> with SingleTicker
                 data['type'] == 'live' ? "Hire Now" : "Scheduled",
                 style: TextStyle(color: data['type'] == 'live' ? Colors.red : Colors.orange, fontWeight: FontWeight.w600, fontSize: 13),
               ),
-              Text(
-                "₹$amount",
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    "₹$amount",
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green),
+                  ),
+                  if (data['hours'] != null)
+                    Text(
+                      "${data['hours']} hr${data['hours'] > 1 ? 's' : ''} ${data['tip'] != null && data['tip'] > 0 ? '+ ₹${data['tip']} tip' : ''}",
+                      style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                    )
+                ],
               ),
             ],
           ),
