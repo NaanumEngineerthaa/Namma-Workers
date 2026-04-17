@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:geolocator/geolocator.dart';
 import 'map_confirm_page.dart';
+import 'theme.dart';
 
 class ManualLocationPicker extends StatefulWidget {
   final String service;
@@ -34,9 +35,8 @@ class _ManualLocationPickerState extends State<ManualLocationPicker> {
 
   Future<void> _setInitialLocation() async {
     try {
-      // Try to get current position for a better default
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.low, // Fast fetch for initial map load
+        desiredAccuracy: LocationAccuracy.low, 
       );
       
       if (mounted) {
@@ -47,7 +47,6 @@ class _ManualLocationPickerState extends State<ManualLocationPicker> {
         _mapController.move(newPos, 14);
       }
     } catch (e) {
-      // If GPS fails, we stick to the default Bangalore position
       debugPrint("Could not set initial location: $e");
     }
   }
@@ -88,18 +87,23 @@ class _ManualLocationPickerState extends State<ManualLocationPicker> {
 
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: Colors.redAccent),
+      SnackBar(content: Text(msg), backgroundColor: AppTheme.unselectedColor),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
-        title: const Text("Pick Location", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        title: const Text("Pick Location", style: TextStyle(fontWeight: FontWeight.w900, color: AppTheme.textColor)),
+        backgroundColor: Colors.transparent,
         elevation: 0,
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppTheme.textColor),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
       ),
       body: Stack(
         children: [
@@ -123,7 +127,14 @@ class _ManualLocationPickerState extends State<ManualLocationPicker> {
                     point: selected,
                     width: 80,
                     height: 80,
-                    child: const Icon(Icons.location_pin, size: 45, color: Colors.red),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withAlpha(30),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.location_on_rounded, size: 45, color: AppTheme.primaryColor),
+                    ),
                   )
                 ],
               ),
@@ -138,42 +149,46 @@ class _ManualLocationPickerState extends State<ManualLocationPicker> {
             child: Column(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 15, offset: Offset(0, 5))],
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: AppTheme.glowingShadow,
+                    border: Border.all(color: AppTheme.primaryColor.withAlpha(20)),
                   ),
                   child: TextField(
                     controller: _searchController,
                     onSubmitted: (val) => _searchLocation(val),
+                    style: const TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textColor),
                     decoration: InputDecoration(
-                      hintText: "Search area, city or landmark...",
+                      hintText: "Search area city or landmark...",
                       border: InputBorder.none,
+                      hintStyle: const TextStyle(color: AppTheme.subtitleColor, fontWeight: FontWeight.normal),
                       suffixIcon: _isSearching 
-                        ? const SizedBox(width: 20, height: 20, child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(strokeWidth: 2)))
+                        ? const SizedBox(width: 20, height: 20, child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryColor)))
                         : IconButton(
-                            icon: const Icon(Icons.search, color: Colors.blue),
+                            icon: const Icon(Icons.search_rounded, color: AppTheme.primaryColor),
                             onPressed: () => _searchLocation(_searchController.text),
                           ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 
                 // Tip Overlay
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
-                    color: Colors.blue[900]?.withAlpha(200),
+                    color: AppTheme.textColor.withAlpha(220),
                     borderRadius: BorderRadius.circular(30),
+                    boxShadow: [BoxShadow(color: Colors.black.withAlpha(50), blurRadius: 10)],
                   ),
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                       Icon(Icons.touch_app, color: Colors.white, size: 16),
-                       SizedBox(width: 8),
-                       Text("Or tap on map to pick precisely", style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                       Icon(Icons.touch_app_rounded, color: Colors.white, size: 18),
+                       SizedBox(width: 10),
+                       Text("Or tap on map to pick precisely", style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ),
@@ -200,13 +215,14 @@ class _ManualLocationPickerState extends State<ManualLocationPicker> {
                 );
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue[800],
+                backgroundColor: AppTheme.primaryColor,
                 foregroundColor: Colors.white,
-                minimumSize: const Size(double.infinity, 56),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                minimumSize: const Size(double.infinity, 64),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                 elevation: 10,
+                shadowColor: AppTheme.primaryColor.withAlpha(100),
               ),
-              child: const Text("Confirm Selection", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              child: const Text("Confirm Selection", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
             ),
           )
         ],

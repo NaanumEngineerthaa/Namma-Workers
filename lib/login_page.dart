@@ -21,7 +21,11 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       final GoogleSignIn googleSignIn = GoogleSignIn();
-      await googleSignIn.signOut(); 
+      
+      // Attempt sign out first to ensure account picker always shows
+      try {
+        await googleSignIn.signOut(); 
+      } catch (_) {}
       
       final googleUser = await googleSignIn.signIn();
       if (googleUser == null) {
@@ -37,11 +41,21 @@ class _LoginPageState extends State<LoginPage> {
 
       await FirebaseAuth.instance.signInWithCredential(credential);
     } catch (e) {
+      debugPrint("Login Error: $e");
+      String errorMsg = "Login failed. Please try again.";
+      
+      if (e.toString().contains("network_error")) {
+        errorMsg = "Network error. Check your connection.";
+      } else if (e.toString().contains("developer_error")) {
+        errorMsg = "Configuration error (SHA-1/Package Name). Check Firebase Console.";
+      }
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Failed to sign in: ${e.toString()}"),
+            content: Text(errorMsg),
             backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
           ),
         );
       }
@@ -61,15 +75,10 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     return Scaffold(
+      backgroundColor: AppTheme.backgroundColor,
       body: Container(
         width: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF6A11CB), Color(0xFF2575FC)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
+        decoration: const BoxDecoration(gradient: AppTheme.bgGlowingEffect),
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 40.0),
@@ -79,62 +88,76 @@ class _LoginPageState extends State<LoginPage> {
                 Hero(
                   tag: 'logo',
                   child: Container(
-                    padding: const EdgeInsets.all(4),
+                    padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [
-                        BoxShadow(color: Colors.black.withAlpha(50), blurRadius: 20, offset: const Offset(0, 10))
-                      ],
+                      color: AppTheme.backgroundColor,
+                      //borderRadius: BorderRadius.circular(32),
+                      //boxShadow: AppTheme.glowingShadow,
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(24),
-                      child: Image.asset('assets/logo.png', height: 100, width: 100),
+                      child: Image.asset(
+                        'assets/logo.png', 
+                        height: 130, 
+                        width: 130,
+                        cacheHeight: 260, 
+                        cacheWidth: 260,
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 0),
                 const Text(
-                  "Namma\nWorkers",
+                  "Namma Workers",
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Colors.white,
+                    color: AppTheme.textColor,
                     fontSize: 48,
-                    fontWeight: FontWeight.w800,
-                    height: 1.1,
-                    letterSpacing: -1,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -1.2,
                   ),
                 ),
-                const SizedBox(height: 16),
-                Text(
+                const SizedBox(height: 4),
+                const Text(
                   "Connecting expert workers with those who need them.",
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Colors.white.withAlpha(200),
-                    fontSize: 18,
+                    color: AppTheme.subtitleColor,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(height: 60),
-                ElevatedButton.icon(
-                  onPressed: signInWithGoogle,
-                  icon: Image.network(
-                    'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_\"G\"_logo.svg/1200px-Google_\"G\"_logo.svg.png',
-                    height: 24,
-                    errorBuilder: (context, error, stackTrace) => const Icon(Icons.login),
-                  ),
-                  label: const Text(
-                    "Continue with Google",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black87,
-                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
+                SizedBox(
+                  width: double.infinity,
+                  height: 64,
+                  child: ElevatedButton.icon(
+                    onPressed: signInWithGoogle,
+                    icon: ColorFiltered(
+                      colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+                      child: Image.network(
+                        'https://www.gstatic.com/images/branding/product/2x/googleg_96dp.png',
+                        height: 24,
+                        errorBuilder: (context, error, stackTrace) => const Icon(Icons.account_circle_rounded),
+                      ),
                     ),
-                    elevation: 10,
+                    label: const Text(
+                      "Continue with Google",
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      elevation: 12,
+                      shadowColor: AppTheme.primaryColor.withAlpha(100),
+                    ),
                   ),
                 ),
+                const SizedBox(height: 40),
               ],
             ),
           ),
@@ -143,3 +166,4 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 }
+

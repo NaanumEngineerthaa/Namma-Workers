@@ -11,6 +11,9 @@ import 'customer_profile_setup_page.dart';
 
 import 'theme.dart';
 import 'widgets/loading_screen.dart';
+import 'widgets/no_internet_wrapper.dart';
+import 'widgets/force_update_page.dart';
+import 'services/version_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,29 +32,48 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Namma Workers',
       theme: AppTheme.lightTheme,
-      home: StreamBuilder<User?>(
-        stream: FirebaseAuth.instance.authStateChanges(),
-        initialData: FirebaseAuth.instance.currentUser,
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Scaffold(
-              body: Center(child: Text("Auth Error: ${snapshot.error}")),
+      builder: (context, child) {
+        return NoInternetWrapper(child: child!);
+      },
+      home: FutureBuilder<Map<String, dynamic>?>(
+          future: VersionService.checkVersion(),
+          builder: (context, versionSnapshot) {
+            // While checking version
+            if (versionSnapshot.connectionState == ConnectionState.waiting) {
+              return const PremiumLoadingScreen(message: "Checking for updates...");
+            }
+
+            // If a force update is required
+            if (versionSnapshot.hasData && versionSnapshot.data!['forceUpdate'] == true) {
+              return ForceUpdatePage(updateUrl: versionSnapshot.data!['updateUrl']);
+            }
+
+            // Normal Flow
+            return StreamBuilder<User?>(
+              stream: FirebaseAuth.instance.authStateChanges(),
+              initialData: FirebaseAuth.instance.currentUser,
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Scaffold(
+                    body: Center(child: Text("Auth Error: ${snapshot.error}")),
+                  );
+                }
+                
+                if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
+                  return const PremiumLoadingScreen(message: "Initializing Namma Workers...");
+                }
+                
+                // User logged in
+                if (snapshot.data != null) {
+                  return const RoleSelectionPage();
+                }
+                
+                // User logged out
+                return const LoginPage();
+              },
             );
-          }
-          
-          if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
-            return const PremiumLoadingScreen(message: "Initializing Namma Workers...");
-          }
-          
-          // User logged in
-          if (snapshot.data != null) {
-            return const RoleSelectionPage();
-          }
-          
-          // User logged out
-          return const LoginPage();
-        },
-      ),
+          },
+        ),
     );
   }
 }
@@ -164,13 +186,13 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        Hero(
+                       /* Hero(
                           tag: 'logo',
                           child: Container(
-                            width: 65,
-                            height: 65,
+                            width: 95,
+                            height: 95,
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(20),
                               boxShadow: [
@@ -183,10 +205,15 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
                             ),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(20),
-                              child: Image.asset('assets/logo.png', fit: BoxFit.cover),
+                              child: Image.asset(
+                                'assets/logo.png', 
+                                fit: BoxFit.cover,
+                                cacheHeight: 130, // 2x height for high-PPI screens
+                                cacheWidth: 130,
+                              ),
                             ),
                           ),
-                        ),
+                        ),*/
                         Container(
                           decoration: BoxDecoration(
                             color: Colors.white.withAlpha(30),
@@ -203,7 +230,7 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
                     ),
                     const SizedBox(height: 32),
                     Text(
-                      "Hello, ${user?.displayName?.split(' ').first ?? 'User'} 👋",
+                      "Hello, ${user?.displayName?.split(' ').first ?? 'User'}",
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 20,
@@ -211,14 +238,24 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
                         letterSpacing: 0.5,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 20),
                     const Text(
-                      "Welcome to\nNamma Workers",
+                      "Welcome to",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 32,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 0),
+                    const Text(
+                      "Namma Workers",
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 42,
                         fontWeight: FontWeight.w900,
-                        height: 1.1,
+                        height: 0,
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -226,7 +263,7 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
                       "Transforming the way you find and provide professional services.",
                       style: TextStyle(
                         color: Colors.white.withAlpha(180),
-                        fontSize: 17,
+                        fontSize: 14,
                         height: 1.5,
                       ),
                     ),
@@ -255,7 +292,7 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
                     _buildRoleCard(
                       context,
                       title: "I Need a Service",
-                      subtitle: "Perfect for home repairs, cleaning & more",
+                      subtitle: "Find skilled professionals for any job",
                       icon: Icons.person_search_rounded,
                       isPrimary: true,
                       onTap: () => _handleRoleSelection(context, 'customer'),
@@ -342,7 +379,7 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
                       subtitle,
                       style: TextStyle(
                         color: isPrimary ? AppTheme.subtitleColor : Colors.white.withAlpha(180),
-                        fontSize: 13,
+                        fontSize: 11,
                         fontWeight: FontWeight.w400,
                       ),
                     ),

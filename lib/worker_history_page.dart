@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'widgets/loading_screen.dart';
+import 'theme.dart';
 
 class WorkerHistoryPage extends StatefulWidget {
   const WorkerHistoryPage({super.key});
@@ -31,17 +33,21 @@ class _WorkerHistoryPageState extends State<WorkerHistoryPage> with SingleTicker
     if (user == null) return const Scaffold(body: Center(child: Text("Please Login")));
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
-        title: const Text("Job History", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        title: const Text("Job History", style: TextStyle(fontWeight: FontWeight.bold, color: AppTheme.textColor)),
+        backgroundColor: Colors.transparent,
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppTheme.textColor),
+          onPressed: () => Navigator.pop(context),
+        ),
         bottom: TabBar(
           controller: _tabController,
-          labelColor: Colors.orange[800],
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: Colors.orange[800],
+          labelColor: AppTheme.primaryColor,
+          unselectedLabelColor: AppTheme.subtitleColor,
+          indicatorColor: AppTheme.primaryColor,
+          dividerColor: Colors.transparent,
           isScrollable: true,
           tabs: const [
             Tab(text: "Completed"),
@@ -69,10 +75,14 @@ class _WorkerHistoryPageState extends State<WorkerHistoryPage> with SingleTicker
           .collection(collection)
           .where('workerId', isEqualTo: uid)
           .where('status', whereIn: statuses)
-          .snapshots(),
+          .snapshots()
+          .asyncMap((event) async {
+            await Future.delayed(const Duration(milliseconds: 1500));
+            return event;
+          }),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const PremiumLoadingScreen();
         }
 
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
@@ -115,11 +125,11 @@ class _WorkerHistoryPageState extends State<WorkerHistoryPage> with SingleTicker
     final Timestamp? ts = data['updatedAt'] as Timestamp? ?? data['createdAt'] as Timestamp?;
     final timestamp = ts?.toDate() ?? DateTime.now();
 
-    Color statusColor = Colors.grey;
-    if (status == 'completed') statusColor = Colors.green;
-    if (status == 'picked') statusColor = Colors.blue;
-    if (status == 'cancelled' || status == 'closed') statusColor = Colors.redAccent;
-    if (status == 'rejected') statusColor = Colors.orange;
+    Color statusColor = AppTheme.subtitleColor;
+    if (status == 'completed') statusColor = AppTheme.primaryColor;
+    if (status == 'picked') statusColor = AppTheme.accentColor;
+    if (status == 'cancelled' || status == 'closed') statusColor = AppTheme.unselectedColor;
+    if (status == 'rejected') statusColor = AppTheme.unselectedColor;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -127,7 +137,7 @@ class _WorkerHistoryPageState extends State<WorkerHistoryPage> with SingleTicker
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withAlpha(5), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: AppTheme.primaryColor.withAlpha(10), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -145,21 +155,21 @@ class _WorkerHistoryPageState extends State<WorkerHistoryPage> with SingleTicker
               ),
               Text(
                 DateFormat('dd MMM, hh:mm a').format(timestamp),
-                style: const TextStyle(color: Colors.grey, fontSize: 12),
+                style: const TextStyle(color: AppTheme.subtitleColor, fontSize: 12),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textColor)),
           const SizedBox(height: 4),
           Row(
             children: [
-              const Icon(Icons.location_on_outlined, size: 14, color: Colors.grey),
+              const Icon(Icons.location_on_outlined, size: 14, color: AppTheme.subtitleColor),
               const SizedBox(width: 4),
               Expanded(
                 child: Text(
                   data['location'] ?? "Location N/A",
-                  style: const TextStyle(color: Colors.grey, fontSize: 13),
+                  style: const TextStyle(color: AppTheme.subtitleColor, fontSize: 13),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -172,14 +182,14 @@ class _WorkerHistoryPageState extends State<WorkerHistoryPage> with SingleTicker
             children: [
               Text(
                 data['type'] == 'live' ? "Hire Now" : "Scheduled",
-                style: TextStyle(color: data['type'] == 'live' ? Colors.red : Colors.orange, fontWeight: FontWeight.w600, fontSize: 13),
+                style: const TextStyle(color: AppTheme.primaryColor, fontWeight: FontWeight.w600, fontSize: 13),
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
                     "₹$amount",
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.primaryColor),
                   ),
                   if (data['hours'] != null)
                     Text(

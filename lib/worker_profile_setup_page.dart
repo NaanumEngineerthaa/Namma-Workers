@@ -5,6 +5,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'worker_page.dart';
+import 'theme.dart';
+import 'widgets/loading_screen.dart';
 
 class WorkerProfileSetupPage extends StatefulWidget {
   final Map<String, dynamic>? initialData;
@@ -29,19 +31,18 @@ class _WorkerProfileSetupPageState extends State<WorkerProfileSetupPage> {
   String? _currentPhotoUrl;
   bool _isLoading = false;
 
-  final List<String> _professions = [
-    'Painter',
-    'Plumber',
-    'Electrician',
-    'Carpenter',
-    'Mason',
-    'Mechanic',
-    'Gardener',
-    'Cleaner',
-    'Driver',
-    'Tailor',
-    'Other',
-  ];
+  // Stream for dynamic categories
+  Stream<List<Map<String, dynamic>>> _getCategories() {
+    return FirebaseFirestore.instance
+        .collection('pricing')
+        .where('isActive', isEqualTo: true)
+        .snapshots()
+        .map((snapshot) {
+          final docs = snapshot.docs.map((doc) => doc.data()).toList();
+          docs.sort((a, b) => (a['order'] ?? 0).compareTo(b['order'] ?? 0));
+          return docs;
+        });
+  }
 
   @override
   void initState() {
@@ -165,115 +166,175 @@ class _WorkerProfileSetupPageState extends State<WorkerProfileSetupPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) return const PremiumLoadingScreen(message: "Saving Profile...");
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
-        title: Text(widget.isEditing ? 'Edit Profile' : 'Complete Your Profile'),
+        title: Text(
+          widget.isEditing ? 'Edit Profile' : 'Complete Profile',
+          style: const TextStyle(fontWeight: FontWeight.w900, color: AppTheme.textColor),
+        ),
         elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.indigo[900],
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        leading: widget.isEditing ? IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppTheme.textColor),
+          onPressed: () => Navigator.pop(context),
+        ) : null,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(24.0),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Center(
-                      child: Stack(
-                        children: [
-                          CircleAvatar(
-                            radius: 60,
-                            backgroundColor: Colors.indigo[50],
-                            backgroundImage: _imageFile != null
-                                ? FileImage(_imageFile!)
-                                : (_currentPhotoUrl != null
-                                    ? NetworkImage(_currentPhotoUrl!)
-                                    : (FirebaseAuth.instance.currentUser?.photoURL != null
-                                        ? NetworkImage(FirebaseAuth.instance.currentUser!.photoURL!)
-                                        : null)) as ImageProvider?,
-                            child: _imageFile == null && _currentPhotoUrl == null && FirebaseAuth.instance.currentUser?.photoURL == null
-                                ? Icon(Icons.person, size: 60, color: Colors.indigo[200])
-                                : null,
+      body: Container(
+        height: MediaQuery.of(context).size.height,
+        decoration: const BoxDecoration(gradient: AppTheme.bgGlowingEffect),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Stack(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppTheme.primaryColor.withAlpha(50), width: 2),
+                        ),
+                        child: CircleAvatar(
+                          radius: 70,
+                          backgroundColor: AppTheme.primaryColor.withAlpha(10),
+                          backgroundImage: _imageFile != null
+                              ? FileImage(_imageFile!)
+                              : (_currentPhotoUrl != null
+                                  ? NetworkImage(_currentPhotoUrl!)
+                                  : (FirebaseAuth.instance.currentUser?.photoURL != null
+                                      ? NetworkImage(FirebaseAuth.instance.currentUser!.photoURL!)
+                                      : null)) as ImageProvider?,
+                          child: _imageFile == null && _currentPhotoUrl == null && FirebaseAuth.instance.currentUser?.photoURL == null
+                              ? const Icon(Icons.person_rounded, size: 70, color: AppTheme.primaryColor)
+                              : null,
+                        ),
+                      ),
+                      Positioned(
+                        bottom: 5,
+                        right: 5,
+                        child: CircleAvatar(
+                          backgroundColor: AppTheme.primaryColor,
+                          radius: 22,
+                          child: IconButton(
+                            icon: const Icon(Icons.camera_alt_rounded, size: 22, color: Colors.white),
+                            onPressed: _pickImage,
                           ),
-                          Positioned(
-                            bottom: 0,
-                            right: 0,
-                            child: CircleAvatar(
-                              backgroundColor: Colors.indigo,
-                              radius: 20,
-                              child: IconButton(
-                                icon: const Icon(Icons.camera_alt, size: 20, color: Colors.white),
-                                onPressed: _pickImage,
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 32),
-                    TextFormField(
-                      controller: _nameController,
-                      decoration: InputDecoration(
-                        labelText: 'Full Name',
-                        prefixIcon: const Icon(Icons.person_outline),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      validator: (value) => value == null || value.isEmpty ? 'Please enter your name' : null,
-                    ),
-                    const SizedBox(height: 20),
-                    DropdownButtonFormField<String>(
-                      value: _selectedProfession,
-                      decoration: InputDecoration(
-                        labelText: 'Profession',
-                        prefixIcon: const Icon(Icons.work_outline),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      items: _professions.map((String profession) {
-                        return DropdownMenuItem(
-                          value: profession,
-                          child: Text(profession),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          _selectedProfession = value;
-                        });
-                      },
-                      validator: (value) => value == null ? 'Please select your profession' : null,
-                    ),
-                    const SizedBox(height: 20),
-                    TextFormField(
-                      controller: _experienceController,
-                      decoration: InputDecoration(
-                        labelText: 'Years of Experience',
-                        prefixIcon: const Icon(Icons.history),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      keyboardType: TextInputType.number,
-                      validator: (value) => value == null || value.isEmpty ? 'Please enter experience' : null,
-                    ),
-                    const SizedBox(height: 40),
-                    ElevatedButton(
-                      onPressed: _isLoading ? null : _saveProfile,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.indigo[900],
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: Text(
-                        widget.isEditing ? 'Save Changes' : 'Complete Registration', 
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
+                const SizedBox(height: 40),
+                _buildTextField(
+                  controller: _nameController,
+                  label: "Full Name",
+                  icon: Icons.person_rounded,
+                  validator: (val) => val == null || val.isEmpty ? "Please enter your name" : null,
+                ),
+                const SizedBox(height: 20),
+              StreamBuilder<List<Map<String, dynamic>>>(
+                stream: _getCategories(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()));
+                  }
+                  final List<String> professionNames = snapshot.hasData 
+                      ? snapshot.data!.map((e) => e['name'] as String).toList() 
+                      : [];
+                  
+                  return DropdownButtonFormField<String>(
+                    value: _selectedProfession,
+                    decoration: InputDecoration(
+                      labelText: 'Profession',
+                      labelStyle: const TextStyle(color: AppTheme.subtitleColor, fontWeight: FontWeight.w500),
+                      prefixIcon: const Icon(Icons.work_outline_rounded, color: AppTheme.primaryColor),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: AppTheme.primaryColor.withAlpha(20))),
+                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2)),
+                      filled: true,
+                      fillColor: Colors.white,
+                    ),
+                    items: professionNames.map((String profession) {
+                      return DropdownMenuItem<String>(
+                        value: profession,
+                        child: Text(profession),
+                      );
+                    }).toList(),
+                    onChanged: (String? newValue) {
+                      setState(() {
+                        _selectedProfession = newValue;
+                      });
+                    },
+                    validator: (value) => value == null ? 'Please select your profession' : null,
+                  );
+                },
               ),
+                const SizedBox(height: 20),
+                _buildTextField(
+                  controller: _experienceController,
+                  label: "Years of Experience",
+                  icon: Icons.history_rounded,
+                  keyboardType: TextInputType.number,
+                  validator: (val) => val == null || val.isEmpty ? 'Please enter experience' : null,
+                ),
+                const SizedBox(height: 48),
+                SizedBox(
+                  height: 60,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _saveProfile,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      elevation: 8,
+                      shadowColor: AppTheme.primaryColor.withAlpha(100),
+                    ),
+                    child: Text(
+                      widget.isEditing ? 'Save Changes' : 'Complete Registration', 
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    TextInputType? keyboardType,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: keyboardType,
+      validator: validator,
+      style: const TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textColor),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: AppTheme.subtitleColor, fontWeight: FontWeight.w500),
+        prefixIcon: Icon(icon, color: AppTheme.primaryColor),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide(color: AppTheme.primaryColor.withAlpha(20))),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2)),
+        filled: true,
+        fillColor: Colors.white,
+      ),
     );
   }
 }
+

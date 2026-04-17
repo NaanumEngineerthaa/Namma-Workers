@@ -10,6 +10,8 @@ import 'customer_profile_setup_page.dart';
 import 'job_tracking_page.dart';
 import 'package:intl/intl.dart';
 import 'theme.dart';
+import 'widgets/loading_screen.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class CustomerPage extends StatefulWidget {
   final int initialIndex;
@@ -29,38 +31,19 @@ class _CustomerPageState extends State<CustomerPage> {
     _currentIndex = widget.initialIndex;
   }
 
-  final List<String> _professions = [
-    'Painter', 'Plumber', 'Electrician', 'Carpenter', 'Mason', 'Mechanic',
-    'Gardener', 'Cleaner', 'Driver', 'Tailor', 'Other',
-  ];
-
-  final Map<String, IconData> _professionIcons = {
-    'Painter': Icons.format_paint_rounded,
-    'Plumber': Icons.plumbing_rounded,
-    'Electrician': Icons.electric_bolt_rounded,
-    'Carpenter': Icons.handyman_rounded,
-    'Mason': Icons.foundation_rounded,
-    'Mechanic': Icons.build_rounded,
-    'Gardener': Icons.park_rounded,
-    'Cleaner': Icons.cleaning_services_rounded,
-    'Driver': Icons.directions_car_rounded,
-    'Tailor': Icons.content_cut_rounded,
-    'Other': Icons.more_horiz_rounded,
-  };
-
-  final Map<String, Color> _professionColors = {
-    'Painter': AppTheme.primaryColor,
-    'Plumber': const Color(0xFF9C27B0),
-    'Electrician': const Color(0xFFBA68C8),
-    'Carpenter': const Color(0xFF7B1FA2),
-    'Mason': const Color(0xFF4A148C),
-    'Mechanic': const Color(0xFFCC33FF),
-    'Gardener': const Color(0xFF6A0DAD),
-    'Cleaner': const Color(0xFFE040FB),
-    'Driver': AppTheme.primaryColor,
-    'Tailor': const Color(0xFFEE82EE),
-    'Other': Colors.blueGrey,
-  };
+  // --- DYNAMIC PRICING SYSTEM ---
+  Stream<List<Map<String, dynamic>>> _getCategories() {
+    return FirebaseFirestore.instance
+        .collection('pricing')
+        .where('isActive', isEqualTo: true)
+        .snapshots()
+        .map((snapshot) {
+          final docs = snapshot.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList();
+          // Sort in memory to avoid index requirements
+          docs.sort((a, b) => (a['order'] ?? 0).compareTo(b['order'] ?? 0));
+          return docs;
+        });
+  }
 
   // --- LOGIC ---
 
@@ -142,30 +125,45 @@ class _CustomerPageState extends State<CustomerPage> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (context) {
         return Container(
           padding: const EdgeInsets.all(24),
           decoration: const BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+            gradient: AppTheme.bgGlowingEffect,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
-              const SizedBox(height: 20),
-              Text("Book $service", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              Container(
+                width: 50, 
+                height: 5, 
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withAlpha(50), 
+                  borderRadius: BorderRadius.circular(10)
+                )
+              ),
+              const SizedBox(height: 32),
+              Text(
+                "Book $service", 
+                style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: AppTheme.textColor)
+              ),
               const SizedBox(height: 8),
-              Text("When do you need a worker?", style: TextStyle(color: Colors.grey[600])),
-              const SizedBox(height: 24),
+              const Text(
+                "When do you need a worker?", 
+                style: TextStyle(color: AppTheme.subtitleColor, fontSize: 16, fontWeight: FontWeight.w500)
+              ),
+              const SizedBox(height: 36),
               Row(
                 children: [
                   Expanded(
                     child: _buildChoiceCard(
                       title: "Hire Now",
-                      subtitle: "Urgent/Live",
-                      icon: Icons.bolt,
-                      color: Colors.redAccent,
+                      subtitle: "Urgent / Live",
+                      icon: Icons.bolt_rounded,
+                      color: AppTheme.primaryColor,
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(
@@ -177,13 +175,13 @@ class _CustomerPageState extends State<CustomerPage> {
                       },
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 18),
                   Expanded(
                     child: _buildChoiceCard(
                       title: "Schedule",
-                      subtitle: "Plan ahead",
-                      icon: Icons.calendar_today,
-                      color: Colors.orange,
+                      subtitle: "Plan Ahead",
+                      icon: Icons.calendar_month_rounded,
+                      color: AppTheme.accentColor,
                       onTap: () {
                         Navigator.pop(context);
                         Navigator.push(
@@ -200,7 +198,7 @@ class _CustomerPageState extends State<CustomerPage> {
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 32),
             ],
           ),
         );
@@ -212,18 +210,39 @@ class _CustomerPageState extends State<CustomerPage> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 24),
+        padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 12),
         decoration: BoxDecoration(
-          color: color.withAlpha(20),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withAlpha(50), width: 1.5),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: color.withAlpha(40), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: color.withAlpha(20),
+              blurRadius: 15,
+              offset: const Offset(0, 8),
+            )
+          ],
         ),
         child: Column(
           children: [
-            Icon(icon, color: color, size: 40),
-            const SizedBox(height: 12),
-            Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 18)),
-            Text(subtitle, style: TextStyle(color: color.withAlpha(150), fontSize: 12)),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color.withAlpha(20),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 36),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              title, 
+              style: TextStyle(color: AppTheme.textColor, fontWeight: FontWeight.w900, fontSize: 18)
+            ),
+            const SizedBox(height: 4),
+            Text(
+              subtitle, 
+              style: TextStyle(color: AppTheme.subtitleColor, fontSize: 13, fontWeight: FontWeight.w500)
+            ),
           ],
         ),
       ),
@@ -334,7 +353,7 @@ class _CustomerPageState extends State<CustomerPage> {
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Keep Job")),
           TextButton(
             onPressed: () => Navigator.pop(context, true), 
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.unselectedColor),
             child: const Text("Yes, Cancel"),
           ),
         ],
@@ -407,12 +426,12 @@ class _CustomerPageState extends State<CustomerPage> {
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
           children: [
-            const Text("Your Rating: ", style: TextStyle(fontSize: 13, color: Colors.grey)),
+            const Text("Your Rating: ", style: TextStyle(fontSize: 13, color: AppTheme.subtitleColor, fontWeight: FontWeight.w500)),
             Row(
               children: List.generate(5, (index) => Icon(
-                index < ratedValue ? Icons.star : Icons.star_border,
-                color: Colors.amber,
-                size: 18,
+                index < ratedValue ? Icons.star_rounded : Icons.star_outline_rounded,
+                color: AppTheme.primaryColor,
+                size: 20,
               )),
             ),
           ],
@@ -421,22 +440,22 @@ class _CustomerPageState extends State<CustomerPage> {
     }
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.blue[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blue[100]!),
+        color: AppTheme.primaryColor.withAlpha(10),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.primaryColor.withAlpha(20)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("How was the service?", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blue)),
-          const SizedBox(height: 8),
+          const Text("How was the service?", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.primaryColor)),
+          const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: List.generate(5, (index) => GestureDetector(
               onTap: () => _submitRating(jobId, workerId, index + 1),
-              child: Icon(Icons.star_outline_rounded, color: Colors.blue[300], size: 36),
+              child: const Icon(Icons.star_outline_rounded, color: AppTheme.primaryColor, size: 36),
             )),
           ),
         ],
@@ -445,11 +464,11 @@ class _CustomerPageState extends State<CustomerPage> {
   }
 
   void _showError(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.redAccent));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: AppTheme.unselectedColor));
   }
 
   void _showSuccess(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.green));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: AppTheme.primaryColor));
   }
 
   @override
@@ -460,15 +479,19 @@ class _CustomerPageState extends State<CustomerPage> {
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
-        title: Text(_getPageTitle(), style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(_getPageTitle(), style: const TextStyle(fontWeight: FontWeight.w900, color: AppTheme.textColor)),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppTheme.textColor),
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
-          IconButton(onPressed: () {}, icon: const Icon(Icons.notifications_none, size: 28)),
+          IconButton(
+            onPressed: () {}, 
+            icon: const Icon(Icons.notifications_none_rounded, size: 28, color: AppTheme.textColor)
+          ),
           const SizedBox(width: 8),
         ],
       ),
@@ -527,55 +550,56 @@ class _CustomerPageState extends State<CustomerPage> {
           .collection('jobs')
           .where('customerId', isEqualTo: user.uid)
           .where('status', whereIn: ['picked', 'active', 'pending', 'searching', 'scheduled'])
-          .snapshots(),
+          .snapshots()
+          .asyncMap((snap) async {
+            await Future.delayed(const Duration(milliseconds: 1500));
+            return snap;
+          }),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Center(child: Padding(
             padding: const EdgeInsets.all(24.0),
-            child: Text("Error: ${snapshot.error}", style: const TextStyle(color: Colors.red)),
+            child: Text("Error: ${snapshot.error}", style: const TextStyle(color: AppTheme.unselectedColor)),
           ));
         }
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        if (!snapshot.hasData) return const PremiumLoadingScreen();
 
         final now = DateTime.now();
         List<DocumentSnapshot> validDocs = [];
 
         for (var doc in snapshot.data!.docs) {
           final data = doc.data() as Map<String, dynamic>;
-          final expiresAtField = (data['expiresAt'] as Timestamp?)?.toDate();
+          final isExpired = data['isExpired'] ?? false;
           final status = data['status'];
+          
+          if (isExpired) continue;
+
+          final expiresAtField = (data['expiresAt'] as Timestamp?)?.toDate();
           final type = data['type'];
           
           DateTime effectiveExpiresAt;
           if (expiresAtField != null) {
              effectiveExpiresAt = expiresAtField;
           } else {
-             // Fallback for legacy jobs
              final createdAt = (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
              effectiveExpiresAt = type == 'scheduled' 
                  ? ((data['startTime'] as Timestamp?)?.toDate() ?? createdAt).add(Duration(hours: data['hours'] ?? 1))
-                 : createdAt.add(const Duration(minutes: 30));
+                 : createdAt.add(const Duration(minutes: 30)); 
           }
           
           if (now.isAfter(effectiveExpiresAt)) {
-            if (status == 'picked' || status == 'active') {
-              // Automatically mark as COMPLETED if worker was engaged
-              doc.reference.update({
-                'status': 'completed', 
-                'completedAt': FieldValue.serverTimestamp(),
-                'updatedAt': FieldValue.serverTimestamp()
-              });
-            } else {
-              // Mark as CLOSED if never picked up or remains in pending
-              doc.reference.update({
-                'status': 'closed', 
-                'closedAt': FieldValue.serverTimestamp(),
-                'updatedAt': FieldValue.serverTimestamp()
-              });
-            }
-          } else {
-            validDocs.add(doc);
+             // If live job not picked/active, or scheduled job passed end time, mark as expired in DB
+              if (status != 'picked' && status != 'active' && status != 'completed' && status != 'cancelled' && status != 'rejected') {
+                doc.reference.update({
+                  'isExpired': true,
+                  'status': 'closed', 
+                  'updatedAt': FieldValue.serverTimestamp()
+                });
+                continue;
+              }
           }
+          
+          validDocs.add(doc);
         }
 
         final sortedDocs = validDocs.toList();
@@ -597,143 +621,166 @@ class _CustomerPageState extends State<CustomerPage> {
             final data = doc.data() as Map<String, dynamic>;
             final status = data['status'];
             final isPicked = status == 'picked';
+            final isLive = data['type'] == 'live';
 
-            return GestureDetector(
-              onTap: () {
-                if (isPicked) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => JobTrackingPage(jobId: doc.id),
-                    ),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Waiting for a worker to accept this job.")),
-                  );
-                }
-              },
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.grey[200]!),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withAlpha(5), blurRadius: 10, offset: const Offset(0, 4)),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          "${data['title'] ?? data['profession'] ?? 'Service'} Job",
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            return Container(
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: AppTheme.glowingShadow,
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () {
+                    if (isPicked) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => JobTrackingPage(jobId: doc.id),
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: data['type'] == 'live' ? Colors.redAccent : Colors.orange,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            (data['type'] ?? 'live').toString().toUpperCase(),
-                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      "₹${data['amount'] ?? data['price'] ?? 0}",
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.green),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        const Icon(Icons.location_on, size: 16, color: Colors.grey),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            data['location'] ?? 'Location not available',
-                            style: TextStyle(color: Colors.grey[700], fontSize: 13),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        const Icon(Icons.access_time, size: 16, color: Colors.grey),
-                        const SizedBox(width: 4),
-                        Text(
-                          data['type'] == 'live' 
-                            ? "Requested: ${DateFormat('hh:mm a, dd MMM').format((data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now())}"
-                            : "Scheduled: ${DateFormat('hh:mm a').format((data['startTime'] as Timestamp?)?.toDate() ?? DateTime.now())} - ${DateFormat('hh:mm a').format((data['endTime'] as Timestamp?)?.toDate() ?? DateTime.now())}",
-                          style: TextStyle(color: Colors.grey[600], fontSize: 13),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Waiting for a worker to accept this job.")),
+                      );
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(28),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Icon(isPicked ? Icons.check_circle : Icons.hourglass_top, size: 16, color: isPicked ? Colors.green : Colors.orange),
-                            const SizedBox(width: 4),
+                            Text(
+                              "${data['title'] ?? data['profession'] ?? 'Service'}",
+                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppTheme.textColor),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryColor.withAlpha(20),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: AppTheme.primaryColor.withAlpha(40)),
+                              ),
+                              child: Text(
+                                (data['type'] ?? 'live').toString().toUpperCase(),
+                                style: const TextStyle(
+                                  fontSize: 10, 
+                                  fontWeight: FontWeight.w900, 
+                                  color: AppTheme.primaryColor,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          "₹${(data['amount'] ?? 0).toString()}",
+                          style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: AppTheme.primaryColor),
+                        ),
+                        const SizedBox(height: 20),
+                        _buildJobDetailRow(Icons.location_on_rounded, data['location'] ?? 'Location not available'),
+                        const SizedBox(height: 12),
+                        _buildJobDetailRow(
+                          Icons.access_time_filled_rounded, 
+                          isLive 
+                            ? "Requested: ${DateFormat('hh:mm a, dd MMM').format((data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now())}"
+                            : "Scheduled: ${DateFormat('hh:mm a').format((data['startTime'] as Timestamp?)?.toDate() ?? DateTime.now())} - ${DateFormat('hh:mm a').format((data['endTime'] as Timestamp?)?.toDate() ?? DateTime.now())}"
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryColor.withAlpha(20),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(isPicked ? Icons.check_circle_rounded : Icons.hourglass_empty_rounded, size: 18, color: AppTheme.primaryColor),
+                            ),
+                            const SizedBox(width: 8),
                             Text(
                               isPicked ? "Worker Assigned" : "Finding Worker...",
-                              style: TextStyle(color: isPicked ? Colors.green : Colors.orange, fontWeight: FontWeight.bold, fontSize: 13),
+                              style: const TextStyle(color: AppTheme.primaryColor, fontWeight: FontWeight.w800, fontSize: 13),
                             ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    const SizedBox(height: 12),
-                    const Divider(height: 24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        TextButton.icon(
-                          onPressed: () => _cancelJob(doc.id),
-                          icon: const Icon(Icons.cancel_outlined, size: 18),
-                          label: const Text("Cancel order"),
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.red[700],
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                          ),
+                          ],
                         ),
-                        if (isPicked)
-                          ElevatedButton.icon(
-                            onPressed: () => Navigator.push(
-                              context, 
-                              MaterialPageRoute(builder: (_) => JobTrackingPage(jobId: doc.id))
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 20),
+                          child: Divider(height: 1, color: Color(0xFFF5F5F5)),
+                        ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            GestureDetector(
+                              onTap: () => _cancelJob(doc.id),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.cancel_outlined, size: 20, color: AppTheme.unselectedColor),
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    "Cancel order",
+                                    style: TextStyle(color: AppTheme.unselectedColor, fontWeight: FontWeight.bold, fontSize: 15),
+                                  ),
+                                ],
+                              ),
                             ),
-                            icon: const Icon(Icons.map_rounded, size: 18),
-                            label: const Text("Track Worker"),
-                            style: ElevatedButton.styleFrom(
-                               backgroundColor: Colors.blue[800],
-                               foregroundColor: Colors.white,
-                               elevation: 0,
-                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                            ),
-                          ),
+                            if (isPicked)
+                              Container(
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(colors: [AppTheme.primaryColor, Color(0xFF8A1BC6)]),
+                                  borderRadius: BorderRadius.circular(14),
+                                  boxShadow: [BoxShadow(color: AppTheme.primaryColor.withAlpha(60), blurRadius: 10, offset: const Offset(0, 4))],
+                                ),
+                                child: ElevatedButton.icon(
+                                  onPressed: () => Navigator.push(
+                                    context, 
+                                    MaterialPageRoute(builder: (_) => JobTrackingPage(jobId: doc.id))
+                                  ),
+                                  icon: const Icon(Icons.map_rounded, size: 18, color: Colors.white),
+                                  label: const Text("Track", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                  style: ElevatedButton.styleFrom(
+                                     backgroundColor: Colors.transparent,
+                                     shadowColor: Colors.transparent,
+                                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             );
           },
         );
       },
+    );
+  }
+
+  Widget _buildJobDetailRow(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: AppTheme.primaryColor.withAlpha(200)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(color: AppTheme.textColor, fontSize: 14, fontWeight: FontWeight.w500),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 
@@ -745,13 +792,17 @@ class _CustomerPageState extends State<CustomerPage> {
       stream: FirebaseFirestore.instance
           .collection('jobs')
           .where('customerId', isEqualTo: user.uid)
-          .where('status', whereIn: ['completed', 'cancelled', 'closed'])
-          .snapshots(),
+          .where('status', whereIn: ['completed', 'cancelled', 'closed', 'timeout', 'rejected'])
+          .snapshots()
+          .asyncMap((snap) async {
+            await Future.delayed(const Duration(milliseconds: 1500));
+            return snap;
+          }),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Center(child: Text("Error: ${snapshot.error}"));
         }
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        if (!snapshot.hasData) return const PremiumLoadingScreen();
 
         final sortedDocs = snapshot.data!.docs.toList();
         // Sort in memory (Newest first)
@@ -771,7 +822,6 @@ class _CustomerPageState extends State<CustomerPage> {
           itemBuilder: (context, index) {
             final data = sortedDocs[index].data() as Map<String, dynamic>;
             final status = data['status'] ?? 'unknown';
-            final type = data['type'] ?? 'live';
             final workerId = data['workerId'];
 
             Color statusColor;
@@ -779,33 +829,29 @@ class _CustomerPageState extends State<CustomerPage> {
             
             switch(status.toLowerCase()) {
               case 'completed': 
-                statusColor = Colors.green; 
+                statusColor = AppTheme.primaryColor; 
                 statusLabel = "COMPLETED";
                 break;
               case 'cancelled': 
-                statusColor = Colors.red; 
+                statusColor = AppTheme.subtitleColor; 
                 statusLabel = "CANCELLED";
                 break;
               case 'closed': 
-                statusColor = Colors.grey; 
+                statusColor = AppTheme.unselectedColor; 
                 statusLabel = "CLOSED";
                 break;
-              case 'picked':
-                statusColor = Colors.blue;
-                statusLabel = "PICKED";
-                break;
               default: 
-                statusColor = Colors.orange;
+                statusColor = AppTheme.primaryColor;
                 statusLabel = status.toUpperCase();
             }
 
             return Container(
-              margin: const EdgeInsets.only(bottom: 16),
-              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.only(bottom: 20),
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.grey[100]!),
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: AppTheme.glowingShadow,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -813,56 +859,43 @@ class _CustomerPageState extends State<CustomerPage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        "${data['title'] ?? data['profession'] ?? 'Service'} Job",
-                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                      Expanded(
+                        child: Text(
+                          "${data['title'] ?? data['profession'] ?? 'Service'}",
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppTheme.textColor),
+                        ),
                       ),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
                           color: statusColor.withAlpha(20),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: statusColor.withAlpha(50)),
                         ),
                         child: Text(
                           statusLabel,
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: statusColor),
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: statusColor, letterSpacing: 0.5),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 12),
                   Text(
-                    "₹${data['amount'] ?? data['price'] ?? 0}",
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87),
+                    "₹${(data['amount'] ?? 0).toString()}",
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: AppTheme.textColor),
                   ),
-                  const Divider(height: 24),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Divider(height: 1, color: Color(0xFFF5F5F5)),
+                  ),
                   
-                  // Time & Date
-                  Row(
-                    children: [
-                      const Icon(Icons.calendar_month, size: 14, color: Colors.grey),
-                      const SizedBox(width: 6),
-                      Text(
-                        type == 'live' 
-                          ? "Date: ${DateFormat('dd MMM yyyy, hh:mm a').format((data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now())}"
-                          : "Scheduled: ${DateFormat('dd MMM').format((data['startTime'] as Timestamp?)?.toDate() ?? DateTime.now())} | ${DateFormat('hh:mm a').format((data['startTime'] as Timestamp?)?.toDate() ?? DateTime.now())} - ${DateFormat('hh:mm a').format((data['endTime'] as Timestamp?)?.toDate() ?? DateTime.now())}",
-                        style: const TextStyle(color: Colors.grey, fontSize: 13),
-                      ),
-                    ],
-                  ),
+                  _buildJobDetailRow(Icons.calendar_month_rounded, DateFormat('dd MMM yyyy, hh:mm a').format((data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now())),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Icon(Icons.category, size: 14, color: Colors.grey),
-                      const SizedBox(width: 6),
-                      Text("Type: ${type.toUpperCase()}", style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                    ],
-                  ),
-
+                  _buildJobDetailRow(Icons.location_on_rounded, data['location'] ?? 'Location N/A'),
+                  
                   // Worker Detail
                   if (workerId != null) ...[
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 16),
                     FutureBuilder<DocumentSnapshot>(
                       future: FirebaseFirestore.instance.collection('users').doc(workerId).get(),
                       builder: (context, workerSnapshot) {
@@ -873,23 +906,31 @@ class _CustomerPageState extends State<CustomerPage> {
                         return Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.grey[50],
-                            borderRadius: BorderRadius.circular(12),
+                            color: AppTheme.primaryColor.withAlpha(10),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppTheme.primaryColor.withAlpha(20)),
                           ),
                           child: Row(
                             children: [
-                              CircleAvatar(
-                                radius: 18,
-                                backgroundImage: workerData['photoUrl'] != null ? NetworkImage(workerData['photoUrl']) : null,
-                                child: workerData['photoUrl'] == null ? const Icon(Icons.person, size: 18) : null,
+                              Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: AppTheme.primaryColor.withAlpha(50), width: 1.5),
+                                ),
+                                child: CircleAvatar(
+                                  radius: 20,
+                                  backgroundColor: AppTheme.primaryColor.withAlpha(20),
+                                  backgroundImage: workerData['photoUrl'] != null ? NetworkImage(workerData['photoUrl']) : null,
+                                  child: workerData['photoUrl'] == null ? const Icon(Icons.person, size: 20, color: AppTheme.primaryColor) : null,
+                                ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(workerData['name'] ?? 'Worker', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                                    Text(workerData['profession'] ?? 'Service Provider', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                                    Text(workerData['name'] ?? 'Worker', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textColor)),
+                                    Text(workerData['profession'] ?? 'Service Provider', style: const TextStyle(color: AppTheme.subtitleColor, fontSize: 12)),
                                   ],
                                 ),
                               ),
@@ -902,7 +943,7 @@ class _CustomerPageState extends State<CustomerPage> {
                   
                   // ⭐ Rating Section for Completed Jobs
                   if (status.toLowerCase() == 'completed' && workerId != null) ...[
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 16),
                     _buildRatingWidget(sortedDocs[index].id, workerId, data['rating']),
                   ],
                 ],
@@ -919,9 +960,16 @@ class _CustomerPageState extends State<CustomerPage> {
     if (user == null) return const Center(child: Text("Please login"));
 
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .snapshots()
+          .asyncMap((snap) async {
+            await Future.delayed(const Duration(milliseconds: 1500));
+            return snap;
+          }),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        if (snapshot.connectionState == ConnectionState.waiting) return const PremiumLoadingScreen();
         if (!snapshot.hasData || !snapshot.data!.exists) return const Center(child: Text("Profile not found"));
 
         final data = snapshot.data!.data() as Map<String, dynamic>;
@@ -937,53 +985,60 @@ class _CustomerPageState extends State<CustomerPage> {
                     onPressed: () {
                       Navigator.push(context, MaterialPageRoute(builder: (_) => CustomerProfileSetupPage(initialData: data, isEditing: true)));
                     },
-                    icon: const Icon(Icons.edit_rounded, size: 20),
-                    label: const Text("Edit Profile"),
-                    style: TextButton.styleFrom(foregroundColor: Colors.blue[800]),
+                    icon: const Icon(Icons.edit_rounded, size: 18),
+                    label: const Text("Edit Profile", style: TextStyle(fontWeight: FontWeight.bold)),
+                    style: TextButton.styleFrom(foregroundColor: AppTheme.primaryColor),
                   ),
                 ],
               ),
+              const SizedBox(height: 8),
               Center(
                 child: Stack(
                   children: [
                     Container(
+                      padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        border: Border.all(color: AppTheme.primaryColor.withAlpha(50), width: 4),
+                        border: Border.all(color: AppTheme.primaryColor.withAlpha(50), width: 2),
                       ),
                       child: CircleAvatar(
-                        radius: 60,
+                        radius: 65,
                         backgroundColor: AppTheme.primaryColor.withAlpha(10),
                         backgroundImage: data['photoUrl'] != null 
                           ? NetworkImage(data['photoUrl']) 
                           : null,
                         child: data['photoUrl'] == null 
-                          ? const Icon(Icons.person, size: 60, color: AppTheme.primaryColor) 
+                          ? const Icon(Icons.person, size: 65, color: AppTheme.primaryColor) 
                           : null,
                       ),
                     ),
                     Positioned(
-                      bottom: 0,
-                      right: 0,
+                      bottom: 5,
+                      right: 5,
                       child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(color: AppTheme.primaryColor, shape: BoxShape.circle),
-                        child: const Icon(Icons.verified, color: Colors.white, size: 24),
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                        child: const Icon(Icons.verified_rounded, color: Colors.white, size: 20),
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               Text(
                 data['name'] ?? 'User Name',
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: AppTheme.textColor),
               ),
+              const SizedBox(height: 4),
               Text(
-                data['email'] ?? 'Email Not Found',
-                style: TextStyle(color: Colors.grey[600], fontSize: 16),
+                data['email'] ?? 'No email associated',
+                style: const TextStyle(color: AppTheme.subtitleColor, fontSize: 15, fontWeight: FontWeight.w500),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 36),
               _buildProfileTile(Icons.phone_iphone_rounded, "Phone", data['phone'] ?? 'N/A'),
               _buildProfileTile(Icons.location_on_rounded, "Primary Address", data['address'] ?? 'N/A'),
               _buildProfileTile(Icons.home_work_rounded, "Address Type", (data['addressType'] as String?)?.toUpperCase() ?? 'N/A'),
@@ -995,15 +1050,16 @@ class _CustomerPageState extends State<CustomerPage> {
                     await FirebaseAuth.instance.signOut();
                   },
                   icon: const Icon(Icons.logout_rounded),
-                  label: const Text("Logout from Application"),
+                  label: const Text("Logout from Namma Workers", style: TextStyle(fontWeight: FontWeight.bold)),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.redAccent,
-                    side: const BorderSide(color: Colors.redAccent),
+                    foregroundColor: AppTheme.unselectedColor,
+                    side: BorderSide(color: AppTheme.unselectedColor.withAlpha(50)),
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                   ),
                 ),
               ),
+              const SizedBox(height: 20),
             ],
           ),
         );
@@ -1013,29 +1069,31 @@ class _CustomerPageState extends State<CustomerPage> {
 
   Widget _buildProfileTile(IconData icon, String label, String value) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.primaryColor.withAlpha(10)),
-        boxShadow: [BoxShadow(color: AppTheme.primaryColor.withAlpha(5), blurRadius: 10, offset: const Offset(0, 4))],
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: AppTheme.glowingShadow,
       ),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: AppTheme.primaryColor.withAlpha(15), shape: BoxShape.circle),
-            child: Icon(icon, color: AppTheme.primaryColor, size: 24),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withAlpha(15),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(icon, color: AppTheme.primaryColor, size: 28),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 18),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(color: AppTheme.subtitleColor, fontSize: 12, fontWeight: FontWeight.w500)),
-                const SizedBox(height: 2),
-                Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textColor)),
+                Text(label, style: const TextStyle(color: AppTheme.subtitleColor, fontSize: 13, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 4),
+                Text(value, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: AppTheme.textColor)),
               ],
             ),
           ),
@@ -1061,9 +1119,12 @@ class _CustomerPageState extends State<CustomerPage> {
           _buildSectionHeader("Recommended Workers"),
           const SizedBox(height: 16),
           FutureBuilder<List<QueryDocumentSnapshot>>(
-            future: _getRecommendedWorkers(),
+            future: Future.wait([
+              _getRecommendedWorkers(),
+              Future.delayed(const Duration(milliseconds: 1500)),
+            ]).then((values) => values[0] as List<QueryDocumentSnapshot>),
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+              if (snapshot.connectionState == ConnectionState.waiting) return const PremiumLoadingScreen(isFullPage: false);
               if (snapshot.hasError) return _buildEmptyState("Error loading workers: ${snapshot.error}");
               if (!snapshot.hasData || snapshot.data!.isEmpty) return _buildEmptyState("No top-rated workers available online");
               return Column(
@@ -1085,9 +1146,12 @@ class _CustomerPageState extends State<CustomerPage> {
           _buildSectionHeader("Nearby Workers"),
           const SizedBox(height: 16),
           FutureBuilder<List<Map<String, dynamic>>>(
-            future: _getNearestWorkers(),
+            future: Future.wait([
+              _getNearestWorkers(),
+              Future.delayed(const Duration(milliseconds: 1500)),
+            ]).then((values) => values[0] as List<Map<String, dynamic>>),
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+              if (snapshot.connectionState == ConnectionState.waiting) return const PremiumLoadingScreen(isFullPage: false);
               if (snapshot.hasError) return _buildEmptyState("Error: ${snapshot.error}");
               if (!snapshot.hasData || snapshot.data!.isEmpty) {
                  return _buildEmptyState("No nearby workers found.\n(Make sure GPS is on and workers are Online)");
@@ -1114,10 +1178,6 @@ class _CustomerPageState extends State<CustomerPage> {
   }
 
   Widget _buildServicesPage() {
-    final filteredProfessions = _professions
-        .where((p) => p.toLowerCase().contains(_searchQuery.toLowerCase()))
-        .toList();
-
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -1145,55 +1205,87 @@ class _CustomerPageState extends State<CustomerPage> {
           const SizedBox(height: 32),
           const Text("Popular Categories", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.textColor)),
           const SizedBox(height: 16),
-          if (filteredProfessions.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(40),
-              child: Center(
-                child: Column(
-                  children: [
-                     Icon(Icons.search_off_rounded, size: 64, color: AppTheme.unselectedColor.withAlpha(100)),
-                     const SizedBox(height: 16),
-                     Text("No services found for '$_searchQuery'", style: const TextStyle(color: AppTheme.subtitleColor, fontSize: 16)),
-                  ],
-                ),
-              ),
-            )
-          else
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3, 
-                crossAxisSpacing: 12, 
-                mainAxisSpacing: 20, 
-                childAspectRatio: 0.8
-              ),
-              itemCount: filteredProfessions.length,
-              itemBuilder: (context, index) {
-                final profession = filteredProfessions[index];
-                final icon = _professionIcons[profession] ?? Icons.category_rounded;
-                const color = AppTheme.primaryColor; // Uniform Primary Color
-                return GestureDetector(
-                  onTap: () => _showJobTypeSelection(profession),
-                  child: Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: color.withAlpha(15), 
-                          shape: BoxShape.circle, 
-                          border: Border.all(color: color.withAlpha(30), width: 1), 
-                          boxShadow: [BoxShadow(color: color.withAlpha(5), blurRadius: 8, offset: const Offset(0, 4))]
-                        ),
-                        child: Icon(icon, color: color, size: 32),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(profession, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textColor)),
-                    ],
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: _getCategories(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator()));
+              }
+              if (snapshot.hasError) {
+                return _buildEmptyState("Error: ${snapshot.error}");
+              }
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return _buildEmptyState("No services available right now.");
+              }
+
+              final filteredProfessions = snapshot.data!
+                  .where((p) => p['name'].toString().toLowerCase().contains(_searchQuery.toLowerCase()))
+                  .toList();
+
+              if (filteredProfessions.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.all(40),
+                  child: Center(
+                    child: Column(
+                      children: [
+                         Icon(Icons.search_off_rounded, size: 64, color: AppTheme.unselectedColor.withAlpha(100)),
+                         const SizedBox(height: 16),
+                         Text("No services found for '$_searchQuery'", style: const TextStyle(color: AppTheme.subtitleColor, fontSize: 16)),
+                      ],
+                    ),
                   ),
                 );
-              },
-            ),
+              }
+
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3, 
+                  crossAxisSpacing: 12, 
+                  mainAxisSpacing: 20, 
+                  childAspectRatio: 0.8
+                ),
+                itemCount: filteredProfessions.length,
+                itemBuilder: (context, index) {
+                  final category = filteredProfessions[index];
+                  final name = category['name'] ?? 'Service';
+                  final iconUrl = category['iconUrl'] as String?;
+                  const color = AppTheme.primaryColor;
+
+                  return GestureDetector(
+                    onTap: () => _showJobTypeSelection(name),
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: color.withAlpha(15), 
+                            shape: BoxShape.circle, 
+                            border: Border.all(color: color.withAlpha(30), width: 1), 
+                            boxShadow: [BoxShadow(color: color.withAlpha(5), blurRadius: 8, offset: const Offset(0, 4))]
+                          ),
+                          child: (iconUrl != null && iconUrl.isNotEmpty)
+                              ? CachedNetworkImage(
+                                  imageUrl: iconUrl,
+                                  width: 32,
+                                  height: 32,
+                                  color: color,
+                                  colorBlendMode: BlendMode.srcIn,
+                                  placeholder: (context, url) => const Icon(Icons.miscellaneous_services, color: color, size: 32),
+                                  errorWidget: (context, url, error) => const Icon(Icons.miscellaneous_services, color: color, size: 32),
+                                )
+                              : const Icon(Icons.miscellaneous_services, color: color, size: 32),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(name, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textColor)),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          ),
           const SizedBox(height: 32),
           // Urgent Help Card
           Container(
@@ -1235,98 +1327,160 @@ class _CustomerPageState extends State<CustomerPage> {
   }
 
   Widget _buildQuickCategoryGrid() {
-    final categories = [
-      {'name': 'Cleaning', 'icon': Icons.cleaning_services_rounded},
-      {'name': 'Repairing', 'icon': Icons.settings_rounded},
-      {'name': 'Laundry', 'icon': Icons.local_laundry_service_rounded},
-      {'name': 'Gardening', 'icon': Icons.park_rounded},
-    ];
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, crossAxisSpacing: 16, mainAxisSpacing: 16, childAspectRatio: 1.5),
-      itemCount: categories.length,
-      itemBuilder: (context, index) {
-        final cat = categories[index];
-        const color = AppTheme.primaryColor;
-        return GestureDetector(
-          onTap: () => _showJobTypeSelection(cat['name'] as String),
-          child: Container(
-            decoration: BoxDecoration(
-              color: color.withAlpha(15), 
-              borderRadius: BorderRadius.circular(24), 
-              border: Border.all(color: color.withAlpha(25)),
-              boxShadow: [BoxShadow(color: color.withAlpha(5), blurRadius: 10, offset: const Offset(0, 4))]
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(cat['icon'] as IconData, color: color, size: 36),
-                const SizedBox(height: 10),
-                Text(cat['name'] as String, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: AppTheme.textColor)),
-              ],
-            ),
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _getCategories(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.isEmpty) return const SizedBox.shrink();
+        
+        final categories = snapshot.data!.take(4).toList();
+        
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2, 
+            crossAxisSpacing: 16, 
+            mainAxisSpacing: 16, 
+            childAspectRatio: 1.6
           ),
+          itemCount: categories.length,
+          itemBuilder: (context, index) {
+            final cat = categories[index];
+            final name = cat['name'] ?? 'Service';
+            final iconUrl = cat['iconUrl'] as String?;
+            const color = AppTheme.primaryColor;
+            
+            return GestureDetector(
+              onTap: () => _showJobTypeSelection(name),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white, 
+                  borderRadius: BorderRadius.circular(28), 
+                  border: Border.all(color: color.withAlpha(20)),
+                  boxShadow: [
+                    BoxShadow(color: color.withAlpha(8), blurRadius: 15, offset: const Offset(0, 8))
+                  ]
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: color.withAlpha(20), shape: BoxShape.circle),
+                      child: (iconUrl != null && iconUrl.isNotEmpty)
+                          ? CachedNetworkImage(
+                              imageUrl: iconUrl,
+                              width: 20,
+                              height: 20,
+                              color: color,
+                              colorBlendMode: BlendMode.srcIn,
+                              placeholder: (context, url) => const Icon(Icons.miscellaneous_services, color: color, size: 20),
+                              errorWidget: (context, url, error) => const Icon(Icons.miscellaneous_services, color: color, size: 20),
+                            )
+                          : const Icon(Icons.miscellaneous_services, color: color, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(name, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15, color: AppTheme.textColor)),
+                  ],
+                ),
+              ),
+            );
+          },
         );
       },
     );
   }
 
   Widget _buildSectionHeader(String title) {
-    return Text(title, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.textColor));
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppTheme.textColor)),
+        TextButton(onPressed: () {}, child: Text("See All", style: TextStyle(color: AppTheme.primaryColor, fontWeight: FontWeight.bold))),
+      ],
+    );
   }
 
   Widget _buildEmptyState(String msg) {
-    return Padding(padding: const EdgeInsets.symmetric(vertical: 20), child: Center(child: Text(msg, style: TextStyle(color: AppTheme.subtitleColor, fontStyle: FontStyle.italic))));
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryColor.withAlpha(10),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppTheme.primaryColor.withAlpha(10), style: BorderStyle.solid),
+      ),
+      child: Center(
+        child: Text(msg, textAlign: TextAlign.center, style: TextStyle(color: AppTheme.subtitleColor, fontWeight: FontWeight.w500, height: 1.5)),
+      ),
+    );
   }
 
   Widget _buildWorkerCard({required String name, required String profession, required String rating, required String info, String? photoUrl, String? addressType, VoidCallback? onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-        decoration: BoxDecoration(
-          color: Colors.white, 
-          borderRadius: BorderRadius.circular(24), 
-          boxShadow: [
-            BoxShadow(color: AppTheme.primaryColor.withAlpha(15), blurRadius: 20, offset: const Offset(0, 8))
-          ]
-        ),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 35, 
-              backgroundColor: AppTheme.primaryColor.withAlpha(10), 
-              backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null, 
-              child: photoUrl == null ? Icon(Icons.person, color: AppTheme.primaryColor, size: 30) : null
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.textColor)),
-                  Row(
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: Colors.white, 
+        borderRadius: BorderRadius.circular(30), 
+        boxShadow: AppTheme.glowingShadow,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(30),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppTheme.primaryColor.withAlpha(50), width: 1.5),
+                  ),
+                  child: CircleAvatar(
+                    radius: 35, 
+                    backgroundColor: AppTheme.primaryColor.withAlpha(20), 
+                    backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null, 
+                    child: photoUrl == null ? const Icon(Icons.person, color: AppTheme.primaryColor, size: 30) : null
+                  ),
+                ),
+                const SizedBox(width: 18),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(profession, style: TextStyle(color: AppTheme.subtitleColor, fontSize: 14)),
-                      if (addressType != null) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(color: AppTheme.primaryColor.withAlpha(20), borderRadius: BorderRadius.circular(6)),
-                          child: Text(addressType.toUpperCase(), style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppTheme.primaryColor)),
-                        ),
-                      ],
+                      Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppTheme.textColor)),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Text(profession, style: const TextStyle(color: AppTheme.subtitleColor, fontSize: 14, fontWeight: FontWeight.w500)),
+                          if (addressType != null) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                              decoration: BoxDecoration(color: AppTheme.primaryColor.withAlpha(20), borderRadius: BorderRadius.circular(8)),
+                              child: Text(addressType.toUpperCase(), style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: AppTheme.primaryColor)),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(Icons.star_rounded, color: AppTheme.primaryColor, size: 20),
+                          Text(" $rating ", style: const TextStyle(fontWeight: FontWeight.w900, color: AppTheme.textColor)),
+                          Text("• $info", style: const TextStyle(color: AppTheme.subtitleColor, fontSize: 13, fontWeight: FontWeight.w500)),
+                        ],
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Row(children: [const Icon(Icons.star, color: Colors.amber, size: 18), Text(" $rating ", style: const TextStyle(fontWeight: FontWeight.bold)), Text("• $info", style: TextStyle(color: AppTheme.subtitleColor, fontSize: 13))]),
-                ],
-              ),
+                ),
+                const Icon(Icons.arrow_forward_ios_rounded, color: AppTheme.unselectedColor, size: 16),
+              ],
             ),
-            Icon(Icons.chevron_right, color: AppTheme.subtitleColor),
-          ],
+          ),
         ),
       ),
     );

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'widgets/loading_screen.dart';
+import 'theme.dart';
 
 class WorkerLivePage extends StatelessWidget {
   final bool isOnline;
@@ -27,7 +29,7 @@ class WorkerLivePage extends StatelessWidget {
     final user = FirebaseAuth.instance.currentUser;
 
     return Container(
-      color: Colors.grey[50],
+      color: AppTheme.backgroundColor,
       child: Column(
         children: [
           Expanded(
@@ -45,17 +47,11 @@ class WorkerLivePage extends StatelessWidget {
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: isOnline 
-                            ? [Colors.green[600]!, Colors.green[400]!] 
-                            : [Colors.red[600]!, Colors.red[400]!],
+                            ? [AppTheme.primaryColor, AppTheme.accentColor] 
+                            : [AppTheme.unselectedColor, AppTheme.unselectedColor.withAlpha(200)],
                         ),
                         borderRadius: BorderRadius.circular(40),
-                        boxShadow: [
-                          BoxShadow(
-                            color: (isOnline ? Colors.green : Colors.red).withAlpha(100),
-                            blurRadius: 15,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
+                        boxShadow: AppTheme.glowingShadow,
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -86,15 +82,15 @@ class WorkerLivePage extends StatelessWidget {
                 // 📊 STATUS CARD
                 Container(
                   margin: const EdgeInsets.symmetric(horizontal: 24),
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withAlpha(10),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
+                        color: AppTheme.primaryColor.withAlpha(10),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
                       ),
                     ],
                   ),
@@ -103,40 +99,53 @@ class WorkerLivePage extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text("Current Status", style: TextStyle(fontSize: 16)),
+                          const Text("Current Status", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: AppTheme.textColor)),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
-                              color: (isOnline ? Colors.green : Colors.red).withAlpha(30),
+                              color: (isOnline ? AppTheme.primaryColor : AppTheme.unselectedColor).withAlpha(15),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
                               isOnline ? "ONLINE" : "OFFLINE",
                               style: TextStyle(
-                                color: isOnline ? Colors.green[700] : Colors.red[700],
+                                color: isOnline ? AppTheme.primaryColor : AppTheme.unselectedColor,
                                 fontWeight: FontWeight.bold,
+                                fontSize: 13,
                               ),
                             ),
                           ),
                         ],
                       ),
-                      const Divider(height: 24),
+                      const SizedBox(height: 20),
+                      const Divider(height: 1, color: Color(0xFFEEEEEE)),
+                      const SizedBox(height: 20),
                       StreamBuilder<DocumentSnapshot>(
                         stream: FirebaseFirestore.instance
                             .collection('users')
                             .doc(user?.uid)
-                            .snapshots(),
+                            .snapshots()
+                            .asyncMap((event) async {
+                              await Future.delayed(const Duration(milliseconds: 1500));
+                              return event;
+                            }),
                         builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                             return const Padding(
+                               padding: EdgeInsets.symmetric(vertical: 4),
+                               child: PremiumLoadingScreen(isFullPage: false),
+                             );
+                          }
                           final data = snapshot.data?.data() as Map<String, dynamic>?;
                           final lastActive = data?['lastActive'] ?? data?['lastSeen'];
                           
                           return Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text("Last Activity", style: TextStyle(color: Colors.grey)),
+                              const Text("Last Activity", style: TextStyle(color: AppTheme.subtitleColor)),
                               Text(
                                 _formatTimestamp(lastActive),
-                                style: const TextStyle(fontWeight: FontWeight.w600),
+                                style: const TextStyle(fontWeight: FontWeight.w700, color: AppTheme.textColor),
                               ),
                             ],
                           );

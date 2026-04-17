@@ -46,6 +46,10 @@ dependencies:
   intl: ^0.20.2
   http: ^1.6.0
   lottie: ^3.1.0
+  cached_network_image: ^3.4.1
+  connectivity_plus: ^7.1.1
+  package_info_plus: ^10.0.0
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
@@ -72,6 +76,7 @@ flutter:
   assets:
     - assets/logo.png
     - assets/animations/worker.json
+    - assets/no internet screen/noInternet.json
     # - assets/alert.mp3
 
   # To add assets to your application, add an assets section, like this:

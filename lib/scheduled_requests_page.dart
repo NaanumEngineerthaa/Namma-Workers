@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
+import 'widgets/loading_screen.dart';
+import 'theme.dart';
 
 class ScheduledRequestsPage extends StatefulWidget {
   final String profession;
@@ -24,14 +26,13 @@ class _ScheduledRequestsPageState extends State<ScheduledRequestsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
-        title: const Text("All Scheduled Requests", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        title: const Text("All Scheduled Requests", style: TextStyle(fontWeight: FontWeight.w900, color: AppTheme.textColor)),
+        backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppTheme.textColor),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -40,9 +41,14 @@ class _ScheduledRequestsPageState extends State<ScheduledRequestsPage> {
             .collection('jobs')
             .where('type', isEqualTo: 'scheduled')
             .where('status', whereIn: ['active', 'pending'])
-            .snapshots(),
+            .snapshots()
+            .asyncMap((event) async {
+              await Future.delayed(const Duration(milliseconds: 1500));
+              return event;
+            }),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          if (snapshot.connectionState == ConnectionState.waiting) return const PremiumLoadingScreen();
+          if (!snapshot.hasData) return const PremiumLoadingScreen();
           final docs = snapshot.data!.docs;
           if (docs.isEmpty) return _buildEmptyState("No scheduled jobs found.");
 
@@ -56,13 +62,16 @@ class _ScheduledRequestsPageState extends State<ScheduledRequestsPage> {
             final isMatch = title.contains(prof) || prof.contains(title);
             if (!isMatch) continue;
 
+            final isExpired = pData['isExpired'] ?? false;
+            if (isExpired) continue;
+
             final expiresAtField = (pData['expiresAt'] as Timestamp?)?.toDate();
             final createdAt = (pData['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
             final startFallback = (pData['startTime'] as Timestamp?)?.toDate() ?? createdAt;
-            final effectiveExpiresAt = expiresAtField ?? startFallback.add(Duration(hours: pData['hours'] ?? 1));
+            final effectiveExpiresAt = expiresAtField ?? startFallback.add(Duration(hours: pData['hours'] ?? 1)).add(const Duration(hours: 24)); 
 
             if (now.isAfter(effectiveExpiresAt)) {
-              pendingDoc.reference.update({'status': 'closed', 'closedAt': FieldValue.serverTimestamp()});
+              pendingDoc.reference.update({'isExpired': true});
               continue;
             }
 
@@ -147,95 +156,95 @@ class _ScheduledRequestsPageState extends State<ScheduledRequestsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(color: Colors.orange.withAlpha(30), borderRadius: BorderRadius.circular(8)),
-                    child: Text("SCHEDULED", style: TextStyle(color: Colors.orange[800], fontSize: 10, fontWeight: FontWeight.bold)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(color: AppTheme.primaryColor.withAlpha(20), borderRadius: BorderRadius.circular(8)),
+                      child: Text("SCHEDULED", style: TextStyle(color: AppTheme.primaryColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(distanceStr, style: TextStyle(fontSize: 12, color: AppTheme.subtitleColor, fontWeight: FontWeight.w500)),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text("₹$amount", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.primaryColor)),
+                    if (hours != null)
+                      Text(
+                        "$hours hr${hours > 1 ? 's' : ''} ${tip != null && tip > 0 ? '+ ₹$tip tip' : ''}",
+                        style: TextStyle(color: AppTheme.subtitleColor, fontSize: 11),
+                      )
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            
+            FutureBuilder<DocumentSnapshot>(
+              future: FirebaseFirestore.instance.collection('users').doc(userId).get(),
+              builder: (context, snapshot) {
+                String userName = "Loading...";
+                if (snapshot.hasData && snapshot.data!.exists) {
+                  userName = (snapshot.data!.data() as Map<String, dynamic>)['name'] ?? "Unknown User";
+                }
+                return Text(userName, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.textColor));
+              },
+            ),
+            const SizedBox(height: 4),
+            Text(title, style: TextStyle(fontSize: 16, color: AppTheme.primaryColor, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 10),
+
+            // Row 4: Service Type
+            Row(
+              children: [
+                Icon(Icons.home_work_outlined, color: AppTheme.subtitleColor, size: 16),
+                const SizedBox(width: 4),
+                Text(data['serviceType'] ?? "Home Service", style: TextStyle(color: AppTheme.subtitleColor, fontSize: 13)),
+              ],
+            ),
+            const SizedBox(height: 4),
+
+            // Row 5: Location
+            Row(
+              children: [
+                Icon(Icons.location_on_outlined, color: AppTheme.subtitleColor, size: 16),
+                const SizedBox(width: 4),
+                Expanded(child: Text(address, style: TextStyle(color: AppTheme.subtitleColor, fontSize: 13))),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(Icons.access_time, color: AppTheme.subtitleColor, size: 16),
+                const SizedBox(width: 4),
+                Text(timeDisplay, style: TextStyle(color: AppTheme.subtitleColor, fontSize: 13)),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                     onPressed: () => _rejectJob(doc.id),
+                     child: const Text("Reject"),
                   ),
-                  const SizedBox(width: 8),
-                  Text(distanceStr, style: const TextStyle(fontSize: 12, color: Colors.blueGrey, fontWeight: FontWeight.w500)),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text("₹$amount", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
-                  if (hours != null)
-                    Text(
-                      "$hours hr${hours > 1 ? 's' : ''} ${tip != null && tip > 0 ? '+ ₹$tip tip' : ''}",
-                      style: TextStyle(color: Colors.grey[600], fontSize: 11),
-                    )
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          
-          FutureBuilder<DocumentSnapshot>(
-            future: FirebaseFirestore.instance.collection('users').doc(userId).get(),
-            builder: (context, snapshot) {
-              String userName = "Loading...";
-              if (snapshot.hasData && snapshot.data!.exists) {
-                userName = (snapshot.data!.data() as Map<String, dynamic>)['name'] ?? "Unknown User";
-              }
-              return Text(userName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold));
-            },
-          ),
-          const SizedBox(height: 4),
-          Text(title, style: TextStyle(fontSize: 16, color: Colors.blue[800], fontWeight: FontWeight.w600)),
-          const SizedBox(height: 10),
-
-          // Row 4: Service Type
-          Row(
-            children: [
-              const Icon(Icons.home_work_outlined, color: Colors.grey, size: 16),
-              const SizedBox(width: 4),
-              Text(data['serviceType'] ?? "Home Service", style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-            ],
-          ),
-          const SizedBox(height: 4),
-
-          // Row 5: Location
-          Row(
-            children: [
-              const Icon(Icons.location_on_outlined, color: Colors.grey, size: 16),
-              const SizedBox(width: 4),
-              Expanded(child: Text(address, style: TextStyle(color: Colors.grey[600], fontSize: 13))),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Row(
-            children: [
-              const Icon(Icons.access_time, color: Colors.grey, size: 16),
-              const SizedBox(width: 4),
-              Text(timeDisplay, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-            ],
-          ),
-
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                   onPressed: () => _rejectJob(doc.id),
-                   child: const Text("Reject"),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => _acceptJob(doc.id, data),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange[800], foregroundColor: Colors.white),
-                  child: const Text("Accept"),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => _acceptJob(doc.id, data),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor, foregroundColor: Colors.white),
+                    child: const Text("Accept"),
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
         ],
       ),
     );

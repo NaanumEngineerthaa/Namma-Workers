@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
+import 'widgets/loading_screen.dart';
+import 'theme.dart';
 
 class LiveRequestsPage extends StatefulWidget {
   final String profession;
@@ -24,14 +26,13 @@ class _LiveRequestsPageState extends State<LiveRequestsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
-        title: const Text("All Live Requests", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        title: const Text("All Live Requests", style: TextStyle(fontWeight: FontWeight.w900, color: AppTheme.textColor)),
+        backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppTheme.textColor),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -40,9 +41,16 @@ class _LiveRequestsPageState extends State<LiveRequestsPage> {
             .collection('jobs')
             .where('type', isEqualTo: 'live')
             .where('status', isEqualTo: 'searching')
-            .snapshots(),
+            .snapshots()
+            .asyncMap((event) async {
+              await Future.delayed(const Duration(milliseconds: 1500));
+              return event;
+            }),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const PremiumLoadingScreen();
+          }
+          if (!snapshot.hasData) return const PremiumLoadingScreen();
           final docs = snapshot.data!.docs;
           if (docs.isEmpty) return _buildEmptyState("No live requests currently");
 
@@ -55,12 +63,16 @@ class _LiveRequestsPageState extends State<LiveRequestsPage> {
             final prof = widget.profession.toLowerCase();
             
             if (title.contains(prof) || prof.contains(title)) {
+              final isExpired = data['isExpired'] ?? false;
+              if (isExpired) continue;
+
               final expiresAtField = (data['expiresAt'] as Timestamp?)?.toDate();
               final createdAt = (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
-              final effectiveExpiresAt = expiresAtField ?? createdAt.add(const Duration(minutes: 30));
+              final effectiveExpiresAt = expiresAtField ?? createdAt.add(const Duration(hours: 24)); 
 
               if (now.isAfter(effectiveExpiresAt)) {
-                doc.reference.update({'status': 'closed', 'closedAt': FieldValue.serverTimestamp()});
+                doc.reference.update({'isExpired': true});
+                continue;
               } else {
                 validDocs.add(doc);
               }
@@ -157,14 +169,14 @@ class _LiveRequestsPageState extends State<LiveRequestsPage> {
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(color: Colors.red.withAlpha(30), borderRadius: BorderRadius.circular(8)),
-                      child: Text("LIVE", style: TextStyle(color: Colors.red[700], fontSize: 10, fontWeight: FontWeight.bold)),
+                      decoration: BoxDecoration(color: AppTheme.primaryColor.withAlpha(20), borderRadius: BorderRadius.circular(8)),
+                      child: const Text("LIVE", style: TextStyle(color: AppTheme.primaryColor, fontSize: 10, fontWeight: FontWeight.bold)),
                     ),
                     const SizedBox(width: 8),
-                    Text(distanceStr, style: const TextStyle(fontSize: 12, color: Colors.blueGrey, fontWeight: FontWeight.w500)),
+                    Text(distanceStr, style: TextStyle(fontSize: 12, color: AppTheme.subtitleColor, fontWeight: FontWeight.w500)),
                   ],
                 ),
-                Text("₹$price", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
+                Text("₹$price", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.primaryColor)),
               ],
             ),
             const SizedBox(height: 12),
@@ -176,19 +188,19 @@ class _LiveRequestsPageState extends State<LiveRequestsPage> {
                 if (snapshot.hasData && snapshot.data!.exists) {
                   userName = (snapshot.data!.data() as Map<String, dynamic>)['name'] ?? "Unknown User";
                 }
-                return Text(userName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold));
+                return Text(userName, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.textColor));
               },
             ),
             const SizedBox(height: 4),
-            Text(title, style: TextStyle(fontSize: 16, color: Colors.blue[800], fontWeight: FontWeight.w600)),
+            Text(title, style: TextStyle(fontSize: 16, color: AppTheme.primaryColor, fontWeight: FontWeight.w600)),
             const SizedBox(height: 10),
 
             // Row 4: Service Type
             Row(
               children: [
-                const Icon(Icons.home_work_outlined, color: Colors.grey, size: 16),
+                Icon(Icons.home_work_outlined, color: AppTheme.subtitleColor, size: 16),
                 const SizedBox(width: 4),
-                Text(data['serviceType'] ?? "Home Service", style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                Text(data['serviceType'] ?? "Home Service", style: TextStyle(color: AppTheme.subtitleColor, fontSize: 13)),
               ],
             ),
             const SizedBox(height: 4),
@@ -196,24 +208,24 @@ class _LiveRequestsPageState extends State<LiveRequestsPage> {
             // Row 5: Location
             Row(
               children: [
-                const Icon(Icons.location_on_outlined, color: Colors.grey, size: 16),
+                Icon(Icons.location_on_outlined, color: AppTheme.subtitleColor, size: 16),
                 const SizedBox(width: 4),
-                Expanded(child: Text(address, style: TextStyle(color: Colors.grey[600], fontSize: 13))),
+                Expanded(child: Text(address, style: TextStyle(color: AppTheme.subtitleColor, fontSize: 13))),
               ],
             ),
             const SizedBox(height: 4),
             Row(
               children: [
-                const Icon(Icons.access_time, color: Colors.grey, size: 16),
+                Icon(Icons.access_time, color: AppTheme.subtitleColor, size: 16),
                 const SizedBox(width: 4),
-                Text(timeDisplay, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                Text(timeDisplay, style: TextStyle(color: AppTheme.subtitleColor, fontSize: 13)),
               ],
             ),
 
             if (isDisabled && disabledReason != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8.0),
-                child: Text("⚠ $disabledReason", style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold)),
+                child: Text("⚠ $disabledReason", style: const TextStyle(color: AppTheme.unselectedColor, fontSize: 12, fontWeight: FontWeight.bold)),
               ),
 
             const SizedBox(height: 16),
@@ -229,7 +241,7 @@ class _LiveRequestsPageState extends State<LiveRequestsPage> {
                 Expanded(
                   child: ElevatedButton(
                     onPressed: isDisabled ? null : () => _acceptJob(doc.id, data),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red[600], foregroundColor: Colors.white),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor, foregroundColor: Colors.white),
                     child: const Text("Accept"),
                   ),
                 ),

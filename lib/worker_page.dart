@@ -14,6 +14,7 @@ import 'scheduled_requests_page.dart';
 import 'worker_history_page.dart';
 import 'login_page.dart';
 import 'theme.dart';
+import 'widgets/loading_screen.dart';
 
 class WorkerPage extends StatefulWidget {
   const WorkerPage({super.key});
@@ -83,7 +84,7 @@ class _WorkerPageState extends State<WorkerPage> {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text("Job ${status == 'cancelled' ? 'Cancelled' : 'Closed'} by customer. 🔴"),
-                  backgroundColor: Colors.redAccent,
+                  backgroundColor: AppTheme.unselectedColor,
                 ),
               );
             }
@@ -329,9 +330,10 @@ class _WorkerPageState extends State<WorkerPage> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    // 🏆 Set worker free again (AS PER Logic Rule)
+    // 🏆 Set worker free and increment total jobs count
     await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
       'isBusy': false,
+      'totalJobs': FieldValue.increment(1),
     });
 
     await FirebaseFirestore.instance.collection('jobs').doc(jobId).update({
@@ -363,6 +365,37 @@ class _WorkerPageState extends State<WorkerPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Job cancelled by you. 🔴")),
       );
+    }
+  }
+
+  // 🔄 Automatic Busy Sync Logic
+  void _syncBusyState(List<DocumentSnapshot> activeJobs, bool currentBusy) {
+    if (!mounted) return;
+    
+    final now = DateTime.now();
+    bool shouldBeBusy = activeJobs.any((job) {
+      final data = job.data() as Map<String, dynamic>;
+      if (data['type'] == 'live') return true;
+      if (data['type'] == 'scheduled') {
+        final start = (data['startTime'] as Timestamp?)?.toDate();
+        final end = (data['endTime'] as Timestamp?)?.toDate();
+        // Busy if started and not yet passed end time (though UI button usually clears it)
+        if (start != null && now.isAfter(start)) {
+          if (end == null || now.isBefore(end)) return true;
+        }
+      }
+      return false;
+    });
+
+    // Only update if mismatch
+    if (shouldBeBusy != currentBusy) {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+          'isBusy': shouldBeBusy,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
     }
   }
 
@@ -476,7 +509,7 @@ class _WorkerPageState extends State<WorkerPage> {
           rotate: true,
           child: const Icon(
             Icons.location_on,
-            color: Colors.orange,
+            color: AppTheme.primaryColor,
             size: 40,
           )));
     });
@@ -514,7 +547,7 @@ class _WorkerPageState extends State<WorkerPage> {
               onPressed: _toggleOnlineStatus,
               label: Text(_isOnline ? "Go Offline" : "Go Online"),
               icon: Icon(_isOnline ? Icons.power_settings_new : Icons.play_arrow),
-              backgroundColor: _isOnline ? Colors.green : Colors.redAccent,
+              backgroundColor: AppTheme.primaryColor,
               foregroundColor: Colors.white,
             )
           : null,
@@ -567,9 +600,12 @@ class _WorkerPageState extends State<WorkerPage> {
     if (user == null) return const Center(child: Text("Please login"));
 
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots().asyncMap((event) async {
+        await Future.delayed(const Duration(milliseconds: 1500));
+        return event;
+      }),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        if (snapshot.connectionState == ConnectionState.waiting) return const PremiumLoadingScreen();
         if (!snapshot.hasData || !snapshot.data!.exists) return const Center(child: Text("Profile not found"));
 
         final data = snapshot.data!.data() as Map<String, dynamic>;
@@ -587,7 +623,7 @@ class _WorkerPageState extends State<WorkerPage> {
                     },
                     icon: const Icon(Icons.edit_rounded, size: 20),
                     label: const Text("Edit Profile"),
-                    style: TextButton.styleFrom(foregroundColor: Colors.orange[800]),
+                    style: TextButton.styleFrom(foregroundColor: AppTheme.primaryColor),
                   ),
                 ],
               ),
@@ -597,16 +633,16 @@ class _WorkerPageState extends State<WorkerPage> {
                     Container(
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        border: Border.all(color: Colors.orange.withAlpha(50), width: 4),
+                        border: Border.all(color: AppTheme.primaryColor.withAlpha(50), width: 4),
                       ),
                       child: CircleAvatar(
                         radius: 60,
-                        backgroundColor: Colors.orange[50],
+                        backgroundColor: AppTheme.primaryColor.withAlpha(20),
                         backgroundImage: data['photoUrl'] != null 
                           ? NetworkImage(data['photoUrl']) 
                           : null,
                         child: data['photoUrl'] == null 
-                          ? const Icon(Icons.person, size: 60, color: Colors.orange) 
+                          ? const Icon(Icons.person, size: 60, color: AppTheme.primaryColor) 
                           : null,
                       ),
                     ),
@@ -615,7 +651,7 @@ class _WorkerPageState extends State<WorkerPage> {
                       right: 0,
                       child: Container(
                         padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(color: Colors.orange, shape: BoxShape.circle),
+                        decoration: const BoxDecoration(color: AppTheme.primaryColor, shape: BoxShape.circle),
                         child: const Icon(Icons.verified, color: Colors.white, size: 24),
                       ),
                     ),
@@ -625,11 +661,11 @@ class _WorkerPageState extends State<WorkerPage> {
               const SizedBox(height: 16),
               Text(
                 data['name'] ?? 'Worker Name',
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.textColor),
               ),
               Text(
                 data['email'] ?? 'Email Not Found',
-                style: TextStyle(color: Colors.grey[600], fontSize: 16),
+                style: const TextStyle(color: AppTheme.subtitleColor, fontSize: 16),
               ),
               const SizedBox(height: 32),
               _buildProfileTile(Icons.work_rounded, "Profession", data['profession'] ?? 'N/A'),
@@ -658,8 +694,8 @@ class _WorkerPageState extends State<WorkerPage> {
                   icon: const Icon(Icons.logout_rounded),
                   label: const Text("Logout from Service"),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.redAccent,
-                    side: const BorderSide(color: Colors.redAccent),
+                    foregroundColor: AppTheme.primaryColor,
+                    side: const BorderSide(color: AppTheme.primaryColor),
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
@@ -677,25 +713,25 @@ class _WorkerPageState extends State<WorkerPage> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey[200]!),
+        color: AppTheme.backgroundColor.withAlpha(150),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppTheme.primaryColor.withAlpha(20)),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: Colors.orange.withAlpha(20), shape: BoxShape.circle),
-            child: Icon(icon, color: Colors.orange[800], size: 24),
+            decoration: BoxDecoration(color: AppTheme.primaryColor.withAlpha(20), shape: BoxShape.circle),
+            child: Icon(icon, color: AppTheme.primaryColor, size: 24),
           ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 12, fontWeight: FontWeight.w500)),
+                Text(label, style: const TextStyle(color: AppTheme.subtitleColor, fontSize: 12, fontWeight: FontWeight.w500)),
                 const SizedBox(height: 2),
-                Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.textColor)),
               ],
             ),
           ),
@@ -722,14 +758,30 @@ class _WorkerPageState extends State<WorkerPage> {
           .collection('jobs')
           .where('workerId', isEqualTo: user.uid)
           .where('status', isEqualTo: 'picked')
-          .where('type', isEqualTo: 'live')
-          .snapshots(),
+          .snapshots()
+          .asyncMap((event) async {
+            await Future.delayed(const Duration(milliseconds: 1500));
+            return event;
+          }),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        if (snapshot.connectionState == ConnectionState.waiting) return const PremiumLoadingScreen();
+        if (!snapshot.hasData) return const PremiumLoadingScreen();
         
-        final docs = snapshot.data!.docs;
+        final snapshots = snapshot.data!.docs;
+        final now = DateTime.now();
+
+        // Filter for truly "Active" jobs (Live jobs or Scheduled jobs that have started)
+        final docs = snapshots.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          if (data['type'] == 'live') return true;
+          if (data['type'] == 'scheduled') {
+            final start = (data['startTime'] as Timestamp?)?.toDate();
+            return start != null && now.isAfter(start);
+          }
+          return false;
+        }).toList();
         
-        // No Active Live Jobs -> Standard Passive Map
+        // No Active In-Progress Jobs -> Standard Passive Map
         if (docs.isEmpty) {
           return FlutterMap(
             mapController: _mapController,
@@ -782,7 +834,7 @@ class _WorkerPageState extends State<WorkerPage> {
                   polylines: [
                     Polyline(
                       points: [LatLng(customerLat, customerLng), LatLng(workerLat, workerLng)],
-                      color: Colors.blue.withAlpha(200),
+                      color: AppTheme.primaryColor.withAlpha(200),
                       strokeWidth: 4,
                       isDotted: true,
                     ),
@@ -803,7 +855,7 @@ class _WorkerPageState extends State<WorkerPage> {
                             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 5)]),
                             child: const Text("You", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10)),
                           ),
-                          const Icon(Icons.directions_car, color: Colors.green, size: 40),
+                          const Icon(Icons.directions_car, color: AppTheme.primaryColor, size: 40),
                         ],
                       ),
                     ),
@@ -812,7 +864,7 @@ class _WorkerPageState extends State<WorkerPage> {
                       point: LatLng(customerLat, customerLng),
                       width: 80,
                       height: 80,
-                      child: const Icon(Icons.person_pin_circle, color: Colors.blue, size: 45),
+                      child: const Icon(Icons.person_pin_circle, color: AppTheme.primaryColor, size: 45),
                     ),
                   ],
                 ),
@@ -844,14 +896,14 @@ class _WorkerPageState extends State<WorkerPage> {
                             const SizedBox(height: 4),
                             Text(
                               etaMinutes < 1 ? "Arriving Now" : "${etaMinutes.toInt()} mins away",
-                              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.green),
+                              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppTheme.primaryColor),
                             ),
                           ],
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(16)),
-                          child: Text("${dist.toStringAsFixed(1)} km", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                          decoration: BoxDecoration(color: AppTheme.primaryColor.withAlpha(20), borderRadius: BorderRadius.circular(16)),
+                          child: Text("${dist.toStringAsFixed(1)} km", style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.primaryColor)),
                         ),
                       ],
                     ),
@@ -865,15 +917,17 @@ class _WorkerPageState extends State<WorkerPage> {
                             },
                             icon: const Icon(Icons.navigation),
                             label: const Text("Navigate"),
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[600], foregroundColor: Colors.white),
+                            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryColor, foregroundColor: Colors.white),
                           ),
                         ),
                         const SizedBox(width: 12),
-                        FloatingActionButton.small(
-                          onPressed: () {},
-                          backgroundColor: Colors.green[50],
-                          elevation: 0,
-                          child: const Icon(Icons.call, color: Colors.green),
+                        IconButton(
+                          onPressed: () {}, 
+                          style: IconButton.styleFrom(
+                            backgroundColor: AppTheme.primaryColor.withAlpha(20),
+                            padding: const EdgeInsets.all(12),
+                          ),
+                          icon: const Icon(Icons.call, color: AppTheme.primaryColor),
                         ),
                       ],
                     ),
@@ -885,8 +939,8 @@ class _WorkerPageState extends State<WorkerPage> {
                         icon: const Icon(Icons.check_circle),
                         label: const Text("Mark Job as Completed", style: TextStyle(fontWeight: FontWeight.bold)),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.green[700],
-                          side: BorderSide(color: Colors.green[700]!, width: 2),
+                          foregroundColor: AppTheme.primaryColor,
+                          side: const BorderSide(color: AppTheme.primaryColor, width: 2),
                           padding: const EdgeInsets.symmetric(vertical: 14)
                         ),
                       ),
@@ -903,7 +957,7 @@ class _WorkerPageState extends State<WorkerPage> {
                               content: const Text("Are you sure you want to cancel this picked job?"),
                               actions: [
                                 TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("No")),
-                                TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Yes, Cancel", style: TextStyle(color: Colors.red))),
+                                TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Yes, Cancel", style: const TextStyle(color: AppTheme.unselectedColor, fontWeight: FontWeight.bold))),
                               ],
                             ),
                           );
@@ -914,8 +968,8 @@ class _WorkerPageState extends State<WorkerPage> {
                         icon: const Icon(Icons.cancel),
                         label: const Text("Cancel Job", style: TextStyle(fontWeight: FontWeight.bold)),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.red[700],
-                          side: BorderSide(color: Colors.red[700]!, width: 2),
+                          foregroundColor: AppTheme.unselectedColor,
+                          side: const BorderSide(color: AppTheme.unselectedColor, width: 2),
                           padding: const EdgeInsets.symmetric(vertical: 14)
                         ),
                       ),
@@ -935,8 +989,14 @@ class _WorkerPageState extends State<WorkerPage> {
     if (user == null) return const Center(child: Text("Please Login"));
 
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots().asyncMap((event) async {
+        await Future.delayed(const Duration(milliseconds: 1500));
+        return event;
+      }),
       builder: (context, profileSnapshot) {
+        if (profileSnapshot.connectionState == ConnectionState.waiting) return const PremiumLoadingScreen();
+        if (!profileSnapshot.hasData) return const PremiumLoadingScreen();
+        
         final profileData = profileSnapshot.data?.data() as Map<String, dynamic>? ?? {};
         final int target = profileData['monthlyTarget'] ?? 15000;
         final String profession = profileData['profession'] ?? '';
@@ -948,8 +1008,12 @@ class _WorkerPageState extends State<WorkerPage> {
               .where('status', isEqualTo: 'picked')
               .snapshots(),
           builder: (context, acceptedSnapshot) {
+            if (acceptedSnapshot.connectionState == ConnectionState.waiting) return const PremiumLoadingScreen();
             final List<DocumentSnapshot> activeJobs = acceptedSnapshot.data?.docs ?? [];
             final bool alreadyHasLiveJob = activeJobs.any((doc) => doc['type'] == 'live');
+
+            // 🔄 Automatic Sync for isBusy (Scheduled Jobs)
+            _syncBusyState(activeJobs, profileData['isBusy'] ?? false);
 
             return SingleChildScrollView(
               padding: const EdgeInsets.all(20.0),
@@ -963,13 +1027,13 @@ class _WorkerPageState extends State<WorkerPage> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text("Service Status", style: TextStyle(color: Colors.grey, fontSize: 14)),
+                          const Text("Service Status", style: TextStyle(color: AppTheme.subtitleColor, fontSize: 14)),
                           Text(
                             _isOnline ? "ONLINE" : "OFFLINE",
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
-                              color: _isOnline ? Colors.green[700] : Colors.red[700],
+                              color: _isOnline ? AppTheme.primaryColor : AppTheme.unselectedColor,
                             ),
                           ),
                         ],
@@ -982,22 +1046,22 @@ class _WorkerPageState extends State<WorkerPage> {
                   _buildEarningsCard(target),
                   const SizedBox(height: 30),
 
-                  // 🔴 1. LIVE JOBS SECTION (PENDING)
-                  _buildSectionHeader("🔴 Live Requests", true),
+                  // 1. LIVE JOBS SECTION (PENDING)
+                  _buildSectionHeader("Live Requests", true),
                   const SizedBox(height: 12),
                   _buildLiveJobsStream(user.uid, alreadyHasLiveJob, profession, limit: 2),
 
                   const SizedBox(height: 30),
 
-                  // 🟡 2. SCHEDULED JOBS SECTION (PENDING)
-                  _buildSectionHeader("🟡 Scheduled Bookings", true),
+                  // 2. SCHEDULED JOBS SECTION (PENDING)
+                  _buildSectionHeader("Scheduled Bookings", true),
                   const SizedBox(height: 12),
                   _buildScheduledJobsStream(user.uid, activeJobs, profession, limit: 2),
 
                   const SizedBox(height: 30),
 
-                  // 📅 3. MY TIMELINE (ACCEPTED JOBS)
-                  _buildSectionHeader("📅 My Timeline (Accepted)", false),
+                  // 3. MY TIMELINE (ACCEPTED JOBS)
+                  _buildSectionHeader("My Timeline (Accepted)", false),
                   const SizedBox(height: 12),
                   _buildAcceptedJobsTimeline(user.uid),
                 ],
@@ -1013,9 +1077,32 @@ class _WorkerPageState extends State<WorkerPage> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+        Row(
+          children: [
+            Container(
+              width: 4,
+              height: 20,
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.textColor)),
+          ],
+        ),
         if (showBadge)
-          const Text("Pending", style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withAlpha(20),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Text(
+              "Pending", 
+              style: TextStyle(color: AppTheme.primaryColor, fontSize: 12, fontWeight: FontWeight.bold)
+            ),
+          ),
       ],
     );
   }
@@ -1028,7 +1115,8 @@ class _WorkerPageState extends State<WorkerPage> {
           .where('status', isEqualTo: 'searching')
           .snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        if (snapshot.connectionState == ConnectionState.waiting) return const PremiumLoadingScreen(isFullPage: false);
+        if (!snapshot.hasData) return const PremiumLoadingScreen(isFullPage: false);
         final docs = snapshot.data!.docs;
         if (docs.isEmpty) return _buildEmptyState("No live requests currently");
 
@@ -1041,12 +1129,16 @@ class _WorkerPageState extends State<WorkerPage> {
           final prof = profession.toLowerCase();
           
           if (title.contains(prof) || prof.contains(title)) {
+            final isExpired = data['isExpired'] ?? false;
+            if (isExpired) continue;
+
             final expiresAtField = (data['expiresAt'] as Timestamp?)?.toDate();
             final createdAt = (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
-            final effectiveExpiresAt = expiresAtField ?? createdAt.add(const Duration(minutes: 30));
+            final effectiveExpiresAt = expiresAtField ?? createdAt.add(const Duration(hours: 24)); 
 
             if (now.isAfter(effectiveExpiresAt)) {
-              doc.reference.update({'status': 'closed', 'closedAt': FieldValue.serverTimestamp()});
+              doc.reference.update({'isExpired': true});
+              continue;
             } else {
               validFilteredDocs.add(doc);
             }
@@ -1128,7 +1220,8 @@ class _WorkerPageState extends State<WorkerPage> {
           .where('status', whereIn: ['active', 'pending'])
           .snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        if (snapshot.connectionState == ConnectionState.waiting) return const PremiumLoadingScreen(isFullPage: false);
+        if (!snapshot.hasData) return const PremiumLoadingScreen(isFullPage: false);
         final docs = snapshot.data!.docs;
         if (docs.isEmpty) return _buildEmptyState("No scheduled jobs found");
 
@@ -1142,13 +1235,16 @@ class _WorkerPageState extends State<WorkerPage> {
           if (!isMatch) return false;
 
           // 1.5 Filter and auto-close if expired
+          final isExpired = pData['isExpired'] ?? false;
+          if (isExpired) return false;
+
           final expiresAtField = (pData['expiresAt'] as Timestamp?)?.toDate();
           final createdAt = (pData['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now();
           final startFallback = (pData['startTime'] as Timestamp?)?.toDate() ?? createdAt;
           final effectiveExpiresAt = expiresAtField ?? startFallback.add(Duration(hours: pData['hours'] ?? 1));
 
           if (DateTime.now().isAfter(effectiveExpiresAt)) {
-             pendingDoc.reference.update({'status': 'closed', 'closedAt': FieldValue.serverTimestamp()});
+             pendingDoc.reference.update({'isExpired': true});
              return false;
           }
 
@@ -1238,11 +1334,10 @@ class _WorkerPageState extends State<WorkerPage> {
           .collection('jobs')
           .where('workerId', isEqualTo: uid)
           .where('status', isEqualTo: 'picked')
-          // Removed orderBy to avoid requiring composite index
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.hasError) return _buildEmptyState("Error loading jobs");
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        if (!snapshot.hasData) return const PremiumLoadingScreen(isFullPage: false);
         
         final docs = snapshot.data!.docs;
         if (docs.isEmpty) return _buildEmptyState("Your timeline is empty");
@@ -1286,18 +1381,18 @@ class _WorkerPageState extends State<WorkerPage> {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: Colors.orange[50],
+            color: AppTheme.primaryColor.withAlpha(20),
             borderRadius: BorderRadius.circular(20),
           ),
           child: InkWell(
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WorkerHistoryPage())),
             child: Row(
               children: [
-                Icon(Icons.account_balance_wallet_outlined, size: 16, color: Colors.orange[800]),
+                const Icon(Icons.account_balance_wallet_outlined, size: 16, color: AppTheme.primaryColor),
                 const SizedBox(width: 4),
                 Text(
                   "₹${NumberFormat('#,###').format(earnings)}", 
-                  style: TextStyle(color: Colors.orange[800], fontWeight: FontWeight.bold)
+                  style: const TextStyle(color: AppTheme.primaryColor, fontWeight: FontWeight.bold)
                 ),
               ],
             ),
@@ -1322,18 +1417,12 @@ class _WorkerPageState extends State<WorkerPage> {
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [Colors.orange[800]!, Colors.orange[400]!],
+                colors: [AppTheme.primaryColor, AppTheme.accentColor],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.orange.withAlpha(20),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: AppTheme.glowingShadow,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1505,26 +1594,26 @@ class _WorkerPageState extends State<WorkerPage> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: (type == 'live' ? Colors.red : Colors.orange).withAlpha(30),
+                        color: AppTheme.primaryColor.withAlpha(20),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
                         type.toString().toUpperCase(),
-                        style: TextStyle(
-                          color: type == 'live' ? Colors.red[700] : Colors.orange[800],
+                        style: const TextStyle(
+                          color: AppTheme.primaryColor,
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(distanceStr, style: const TextStyle(fontSize: 12, color: Colors.blueGrey, fontWeight: FontWeight.w500)),
+                    Text(distanceStr, style: const TextStyle(fontSize: 12, color: AppTheme.subtitleColor, fontWeight: FontWeight.w500)),
                   ],
                 ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text("₹$price", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
+                    Text("₹$price", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.primaryColor)),
                     if (data['hours'] != null)
                       Text(
                         "${data['hours']} hr${data['hours'] > 1 ? 's' : ''} ${data['tip'] != null && data['tip'] > 0 ? '+ ₹${data['tip']} tip' : ''}",
@@ -1550,15 +1639,15 @@ class _WorkerPageState extends State<WorkerPage> {
             const SizedBox(height: 4),
 
             // Row 3: Profession / Title (Subtitle)
-            Text(title, style: TextStyle(fontSize: 16, color: Colors.blue[800], fontWeight: FontWeight.w600)),
+            Text(title, style: const TextStyle(fontSize: 16, color: AppTheme.primaryColor, fontWeight: FontWeight.w600)),
             const SizedBox(height: 10),
 
             // Row 4: Service Type
             Row(
               children: [
-                const Icon(Icons.home_work_outlined, color: Colors.grey, size: 16),
+                const Icon(Icons.home_work_outlined, color: AppTheme.subtitleColor, size: 16),
                 const SizedBox(width: 4),
-                Text(data['serviceType'] ?? "Home Service", style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                Text(data['serviceType'] ?? "Home Service", style: const TextStyle(color: AppTheme.subtitleColor, fontSize: 13)),
               ],
             ),
             const SizedBox(height: 4),
@@ -1566,9 +1655,9 @@ class _WorkerPageState extends State<WorkerPage> {
             // Row 5: Location
             Row(
               children: [
-                const Icon(Icons.location_on_outlined, color: Colors.grey, size: 16),
+                const Icon(Icons.location_on_outlined, color: AppTheme.subtitleColor, size: 16),
                 const SizedBox(width: 4),
-                Expanded(child: Text(address, style: TextStyle(color: Colors.grey[600], fontSize: 13))),
+                Expanded(child: Text(address, style: const TextStyle(color: AppTheme.subtitleColor, fontSize: 13))),
               ],
             ),
             const SizedBox(height: 4),
@@ -1576,9 +1665,9 @@ class _WorkerPageState extends State<WorkerPage> {
             // Row 5: Time
             Row(
               children: [
-                const Icon(Icons.access_time, color: Colors.grey, size: 16),
+                const Icon(Icons.access_time, color: AppTheme.subtitleColor, size: 16),
                 const SizedBox(width: 4),
-                Text(timeDisplay, style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                Text(timeDisplay, style: const TextStyle(color: AppTheme.subtitleColor, fontSize: 13)),
               ],
             ),
 
@@ -1587,7 +1676,7 @@ class _WorkerPageState extends State<WorkerPage> {
                 padding: const EdgeInsets.only(top: 8.0),
                 child: Text(
                   "⚠ $disabledReason",
-                  style: const TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
+                  style: const TextStyle(color: AppTheme.unselectedColor, fontSize: 12, fontWeight: FontWeight.bold),
                 ),
               ),
 
@@ -1607,7 +1696,7 @@ class _WorkerPageState extends State<WorkerPage> {
                     child: ElevatedButton(
                       onPressed: isDisabled ? null : () => _acceptJob(doc.id, data),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: type == 'live' ? Colors.red[600] : Colors.orange[800],
+                        backgroundColor: AppTheme.primaryColor,
                         foregroundColor: Colors.white,
                       ),
                       child: const Text("Accept"),
@@ -1625,7 +1714,7 @@ class _WorkerPageState extends State<WorkerPage> {
                       icon: const Icon(Icons.check_circle_outline),
                       label: const Text("Mark as Completed"),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green[600],
+                        backgroundColor: AppTheme.primaryColor,
                         foregroundColor: Colors.white,
                       ),
                     ),
@@ -1671,18 +1760,61 @@ class _WorkerPageState extends State<WorkerPage> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const Center(child: Text("Please Login"));
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text("Active Schedule", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          const Text("These are your currently accepted and pending jobs.", style: TextStyle(color: Colors.grey)),
-          const SizedBox(height: 24),
-          _buildAcceptedJobsTimeline(user.uid),
-        ],
-      ),
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('jobs')
+          .where('workerId', isEqualTo: user.uid)
+          .where('status', isEqualTo: 'picked')
+          .snapshots()
+          .asyncMap((event) async {
+            await Future.delayed(const Duration(milliseconds: 1500));
+            return event;
+          }),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const PremiumLoadingScreen();
+        }
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Active Schedule", 
+                style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: AppTheme.textColor)
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                "These are your currently accepted and pending jobs.", 
+                style: TextStyle(color: AppTheme.subtitleColor, fontSize: 15, fontWeight: FontWeight.w500)
+              ),
+              const SizedBox(height: 32),
+              _buildTimelineContent(snapshot),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTimelineContent(AsyncSnapshot<QuerySnapshot> snapshot) {
+    if (snapshot.hasError) return _buildEmptyState("Error loading schedule");
+    
+    final docs = snapshot.data?.docs ?? [];
+    if (docs.isEmpty) return _buildEmptyState("Your timeline is empty");
+
+    final sortedDocs = docs.toList()..sort((a, b) {
+      final t1 = (a.data() as Map<String, dynamic>)['acceptedAt'] as Timestamp?;
+      final t2 = (b.data() as Map<String, dynamic>)['acceptedAt'] as Timestamp?;
+      return (t2 ?? Timestamp.now()).compareTo(t1 ?? Timestamp.now());
+    });
+
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: sortedDocs.length,
+      itemBuilder: (context, index) => _buildJobCard(sortedDocs[index], isAccepted: true),
     );
   }
 }
@@ -1763,6 +1895,8 @@ class _IncomingJobDialogState extends State<IncomingJobDialog> {
        debugPrint("Error accepting: $e");
     }
   }
+
+
 
   Future<void> _reject() async {
     await widget.requestDoc.reference.update({'status': 'rejected'});

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'tracking_page.dart';
+import 'theme.dart';
 
 class MatchingPage extends StatefulWidget {
   final String jobId;
@@ -246,56 +247,66 @@ class _MatchingPageState extends State<MatchingPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(40.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (_issearching)
-                const SizedBox(
-                  width: 80,
-                  height: 80,
-                  child: CircularProgressIndicator(strokeWidth: 6, color: Colors.blue),
+      backgroundColor: AppTheme.backgroundColor,
+      body: Container(
+        decoration: const BoxDecoration(gradient: AppTheme.bgGlowingEffect),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(40.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (_issearching)
+                  const SizedBox(
+                    width: 80,
+                    height: 80,
+                    child: CircularProgressIndicator(strokeWidth: 6, color: AppTheme.primaryColor),
+                  ),
+                if (!_issearching)
+                  const Icon(Icons.search_off_rounded, size: 90, color: AppTheme.unselectedColor),
+                const SizedBox(height: 48),
+                Text(
+                  _issearching ? "Seeking Experts..." : "Search Suspended",
+                  style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: AppTheme.textColor),
                 ),
-              if (!_issearching)
-                const Icon(Icons.error_outline, size: 80, color: Colors.orange),
-              const SizedBox(height: 40),
-              Text(
-                _issearching ? "Matching Process" : "Searching Paused",
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                _statusText,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 40),
-              if (!_issearching)
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[800], minimumSize: const Size(200, 50), foregroundColor: Colors.white),
-                  child: const Text("Go Back"),
+                const SizedBox(height: 16),
+                Text(
+                  _statusText,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 18, color: AppTheme.subtitleColor, fontWeight: FontWeight.w600, height: 1.5),
                 ),
-              if (_issearching)
-                TextButton(
-                  onPressed: () async {
-                    try {
-                      await FirebaseFirestore.instance.collection('jobs').doc(widget.jobId).update({
-                        'status': 'cancelled',
-                        'updatedAt': FieldValue.serverTimestamp(),
-                      });
-                      if (context.mounted) Navigator.pop(context);
-                    } catch (e) {
-                      debugPrint("Cancel fail: $e");
-                      if (context.mounted) Navigator.pop(context);
-                    }
-                  },
-                  child: const Text("Cancel Request", style: TextStyle(color: Colors.red)),
-                ),
-            ],
+                const SizedBox(height: 56),
+                if (!_issearching)
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor, 
+                      minimumSize: const Size(240, 68), 
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                      elevation: 12,
+                      shadowColor: AppTheme.primaryColor.withAlpha(120),
+                    ),
+                    child: const Text("Return home", style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900)),
+                  ),
+                if (_issearching)
+                  TextButton(
+                    onPressed: () async {
+                      try {
+                        await FirebaseFirestore.instance.collection('jobs').doc(widget.jobId).update({
+                          'status': 'cancelled',
+                          'updatedAt': FieldValue.serverTimestamp(),
+                        });
+                        if (context.mounted) Navigator.pop(context);
+                      } catch (e) {
+                        debugPrint("Cancel fail: $e");
+                        if (context.mounted) Navigator.pop(context);
+                      }
+                    },
+                    child: const Text("Cancel Request", style: TextStyle(color: AppTheme.unselectedColor, fontWeight: FontWeight.bold)),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

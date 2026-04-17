@@ -8,6 +8,7 @@ import 'matching_page.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'customer_page.dart';
+import 'theme.dart';
 
 class MapConfirmPage extends StatefulWidget {
   final String service;
@@ -41,7 +42,6 @@ class _MapConfirmPageState extends State<MapConfirmPage> {
     final prof = widget.service;
     
     try {
-      // Force fetch from server to avoid stale/cache values as requested
       final doc = await FirebaseFirestore.instance
           .collection('pricing')
           .doc(prof)
@@ -59,7 +59,6 @@ class _MapConfirmPageState extends State<MapConfirmPage> {
 
   Future<String> _getAddress(double lat, double lng) async {
     try {
-      // Use Nominatim (free OSM reverse geocoding)
       final url = Uri.parse("https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=18&addressdetails=1");
       final res = await http.get(url, headers: {'User-Agent': 'Namma Workers App'});
       
@@ -67,7 +66,6 @@ class _MapConfirmPageState extends State<MapConfirmPage> {
         final data = json.decode(res.body);
         final addr = data['address'] as Map<String, dynamic>;
         
-        // Pick Area (Suburb/Neighbourhood) and District (City/District)
         String area = addr['suburb'] ?? addr['neighbourhood'] ?? addr['residential'] ?? addr['road'] ?? '';
         String district = addr['city_district'] ?? addr['city'] ?? addr['county'] ?? addr['state_district'] ?? '';
         
@@ -124,7 +122,6 @@ class _MapConfirmPageState extends State<MapConfirmPage> {
       });
 
       if (mounted) {
-        // Reset loading state so if user comes back, button is clickable again
         setState(() => _isBooking = false);
         
         Navigator.push(
@@ -143,7 +140,7 @@ class _MapConfirmPageState extends State<MapConfirmPage> {
       if (mounted) {
         setState(() => _isBooking = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e"), backgroundColor: Colors.redAccent),
+          SnackBar(content: Text("Error: $e"), backgroundColor: AppTheme.unselectedColor),
         );
       }
     }
@@ -151,14 +148,29 @@ class _MapConfirmPageState extends State<MapConfirmPage> {
 
   Future<void> _pickScheduleTime() async {
     final now = DateTime.now();
-    final time = await showTimePicker(context: context, initialTime: TimeOfDay.now());
+    final time = await showTimePicker(
+      context: context, 
+      initialTime: TimeOfDay.now(),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.light().copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppTheme.primaryColor,
+              onPrimary: Colors.white,
+              onSurface: AppTheme.textColor,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
 
     if (time == null) return;
 
     final startTime = DateTime(now.year, now.month, now.day, time.hour, time.minute);
 
     if (startTime.isBefore(DateTime.now())) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Cannot schedule in the past!")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Cannot schedule in the past!"), backgroundColor: AppTheme.unselectedColor));
       return;
     }
 
@@ -185,58 +197,67 @@ class _MapConfirmPageState extends State<MapConfirmPage> {
               ),
               decoration: const BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+                gradient: AppTheme.bgGlowingEffect,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                   const Text("Job Requirements", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                   const SizedBox(height: 24),
-                   Row(
-                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                     children: [
-                       const Text("Base Price", style: TextStyle(color: Colors.grey)),
-                       isLoadingPrice 
-                         ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                         : Text("₹$_pricePerHour / hr", style: const TextStyle(fontWeight: FontWeight.bold)),
-                     ],
+                   Align(
+                     alignment: Alignment.center,
+                     child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppTheme.primaryColor.withAlpha(50), borderRadius: BorderRadius.circular(10))),
                    ),
-                   const Divider(height: 32),
-                   const Text("How many hours do you need help for?", style: TextStyle(color: Colors.grey)),
-                   const SizedBox(height: 8),
+                   const SizedBox(height: 24),
+                   const Text("Job Requirements", style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: AppTheme.textColor)),
+                   const SizedBox(height: 24),
+                   Container(
+                     padding: const EdgeInsets.all(16),
+                     decoration: BoxDecoration(
+                       color: Colors.white,
+                       borderRadius: BorderRadius.circular(20),
+                       boxShadow: AppTheme.glowingShadow,
+                     ),
+                     child: Row(
+                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                       children: [
+                         const Text("Base Price", style: TextStyle(color: AppTheme.subtitleColor, fontWeight: FontWeight.w600)),
+                         isLoadingPrice 
+                           ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryColor))
+                           : Text("₹$_pricePerHour / hr", style: const TextStyle(fontWeight: FontWeight.w900, color: AppTheme.textColor, fontSize: 18)),
+                       ],
+                     ),
+                   ),
+                   const SizedBox(height: 24),
+                   const Text("Duration (Hours)", style: TextStyle(color: AppTheme.subtitleColor, fontWeight: FontWeight.bold)),
+                   const SizedBox(height: 12),
                    Row(
                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                      children: [
-                       Text("$hours Hour${hours > 1 ? 's' : ''}", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                       Text("$hours Hour${hours > 1 ? 's' : ''}", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppTheme.textColor)),
                        Row(
                          children: [
-                           IconButton(
-                             icon: const Icon(Icons.remove_circle, color: Colors.blue, size: 36),
-                             onPressed: (hours > 1 && !isLoadingPrice) ? () => setState(() => hours--) : null,
-                           ),
-                           const SizedBox(width: 8),
-                           IconButton(
-                             icon: const Icon(Icons.add_circle, color: Colors.blue, size: 36),
-                             onPressed: !isLoadingPrice ? () => setState(() => hours++) : null,
-                           ),
+                           _buildRoundActionBtn(Icons.remove_rounded, (hours > 1 && !isLoadingPrice) ? () => setState(() => hours--) : null),
+                           const SizedBox(width: 16),
+                           _buildRoundActionBtn(Icons.add_rounded, !isLoadingPrice ? () => setState(() => hours++) : null),
                          ]
                        )
                      ]
                    ),
                    const SizedBox(height: 24),
-                   const Text("Add a Tip (Optional)", style: TextStyle(color: Colors.grey)),
-                   const SizedBox(height: 8),
+                   const Text("Add a Tip (Optional)", style: TextStyle(color: AppTheme.subtitleColor, fontWeight: FontWeight.bold)),
+                   const SizedBox(height: 12),
                    TextField(
                      enabled: !isLoadingPrice,
                      keyboardType: TextInputType.number,
                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                      decoration: InputDecoration(
                        hintText: "e.g. 50",
-                       prefixIcon: const Icon(Icons.currency_rupee),
-                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                       prefixIcon: const Icon(Icons.currency_rupee_rounded, color: AppTheme.primaryColor),
+                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
                        filled: true,
-                       fillColor: isLoadingPrice ? Colors.grey[200] : Colors.grey[100],
+                       fillColor: Colors.white,
+                       contentPadding: const EdgeInsets.all(20),
                      ),
                      onChanged: (val) {
                        setState(() {
@@ -256,24 +277,41 @@ class _MapConfirmPageState extends State<MapConfirmPage> {
                        }
                      },
                      style: ElevatedButton.styleFrom(
-                       minimumSize: const Size(double.infinity, 56),
-                       backgroundColor: Colors.blue[800],
+                       minimumSize: const Size(double.infinity, 64),
+                       backgroundColor: AppTheme.primaryColor,
                        foregroundColor: Colors.white,
-                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                       elevation: 8,
+                       shadowColor: AppTheme.primaryColor.withAlpha(100),
+                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                      ),
                      child: isLoadingPrice 
                       ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                       : Text(
-                        "Confirm & Book (₹${(_pricePerHour * hours) + tipAmount})", 
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)
+                        "Confirm & Book (₹${((_pricePerHour * hours) + tipAmount).toStringAsFixed(0)})", 
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)
                       ),
                    ),
+                   const SizedBox(height: 12),
                 ]
               ),
             );
           }
         );
       }
+    );
+  }
+
+  Widget _buildRoundActionBtn(IconData icon, VoidCallback? onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: onTap == null ? AppTheme.subtitleColor.withAlpha(50) : AppTheme.primaryColor.withAlpha(20),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: onTap == null ? AppTheme.subtitleColor.withAlpha(100) : AppTheme.primaryColor, size: 30),
+      ),
     );
   }
 
@@ -319,7 +357,7 @@ class _MapConfirmPageState extends State<MapConfirmPage> {
 
       if (mounted) {
         setState(() => _isBooking = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Job scheduled successfully!"), backgroundColor: Colors.green));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Job scheduled successfully!"), backgroundColor: AppTheme.primaryColor));
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (context) => const CustomerPage(initialIndex: 2)),
@@ -329,7 +367,7 @@ class _MapConfirmPageState extends State<MapConfirmPage> {
     } catch (e) {
       if (mounted) {
         setState(() => _isBooking = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: AppTheme.unselectedColor));
       }
     }
   }
@@ -339,18 +377,23 @@ class _MapConfirmPageState extends State<MapConfirmPage> {
     final LatLng point = LatLng(widget.lat, widget.lng);
 
     return Scaffold(
+      backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
-        title: const Text("Confirm Location", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        title: const Text("Confirm Location", style: TextStyle(fontWeight: FontWeight.w900, color: AppTheme.textColor)),
+        backgroundColor: Colors.transparent,
         elevation: 0,
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppTheme.textColor),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
       ),
       body: Stack(
         children: [
           FlutterMap(
             options: MapOptions(
               initialCenter: point,
-              initialZoom: 16, // Zoom in for precision
+              initialZoom: 16, 
             ),
             children: [
               TileLayer(
@@ -361,9 +404,16 @@ class _MapConfirmPageState extends State<MapConfirmPage> {
                 markers: [
                   Marker(
                     point: point,
-                    width: 100,
-                    height: 100,
-                    child: const Icon(Icons.location_pin, color: Colors.red, size: 50),
+                    width: 80,
+                    height: 80,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withAlpha(30),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.location_on_rounded, color: AppTheme.primaryColor, size: 50),
+                    ),
                   )
                 ],
               ),
@@ -372,15 +422,16 @@ class _MapConfirmPageState extends State<MapConfirmPage> {
 
           // Action Overlay
           Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
+            bottom: 24,
+            left: 20,
+            right: 20,
             child: Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 15, offset: Offset(0, -5))],
+                gradient: AppTheme.bgGlowingEffect,
+                borderRadius: BorderRadius.circular(32),
+                boxShadow: AppTheme.glowingShadow,
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -389,16 +440,16 @@ class _MapConfirmPageState extends State<MapConfirmPage> {
                     children: [
                       Container(
                         padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(color: Colors.blue[50], shape: BoxShape.circle),
-                        child: Icon(Icons.pin_drop, color: Colors.blue[800], size: 28),
+                        decoration: BoxDecoration(color: AppTheme.primaryColor.withAlpha(20), shape: BoxShape.circle),
+                        child: const Icon(Icons.stars_rounded, color: AppTheme.primaryColor, size: 28),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(widget.service, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                            const Text("Finalize your booking location", style: TextStyle(color: Colors.grey)),
+                            Text(widget.service, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppTheme.textColor)),
+                            const Text("Finalize your booking location", style: TextStyle(color: AppTheme.subtitleColor, fontWeight: FontWeight.w500)),
                           ],
                         ),
                       ),
@@ -408,16 +459,16 @@ class _MapConfirmPageState extends State<MapConfirmPage> {
                   ElevatedButton(
                     onPressed: _isBooking ? null : (widget.isScheduled ? _pickScheduleTime : _showJobDetailsDialog),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue[800],
+                      backgroundColor: AppTheme.primaryColor,
                       foregroundColor: Colors.white,
-                      minimumSize: const Size(double.infinity, 60),
+                      minimumSize: const Size(double.infinity, 64),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                       elevation: 10,
-                      shadowColor: Colors.blue.withAlpha(50),
+                      shadowColor: AppTheme.primaryColor.withAlpha(100),
                     ),
                     child: _isBooking 
                       ? const CircularProgressIndicator(color: Colors.white)
-                      : Text(widget.isScheduled ? "Confirm & Set Time" : "Confirm & Request Help", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      : Text(widget.isScheduled ? "Confirm & Set Time" : "Confirm & Request Help", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
                   ),
                 ],
               ),

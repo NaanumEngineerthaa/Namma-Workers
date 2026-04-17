@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'customer_page.dart';
+import 'theme.dart';
+import 'widgets/loading_screen.dart';
 
 class CustomerProfileSetupPage extends StatefulWidget {
   final Map<String, dynamic>? initialData;
@@ -75,7 +77,7 @@ class _CustomerProfileSetupPageState extends State<CustomerProfileSetupPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error saving profile: $e"), backgroundColor: Colors.redAccent),
+          SnackBar(content: Text("Error saving profile: $e"), backgroundColor: AppTheme.unselectedColor),
         );
       }
     } finally {
@@ -85,82 +87,94 @@ class _CustomerProfileSetupPageState extends State<CustomerProfileSetupPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) return const PremiumLoadingScreen(message: "Saving Profile...");
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
-        title: Text(widget.isEditing ? "Edit Profile" : "Setup Your Profile", style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(
+          widget.isEditing ? "Edit Profile" : "Setup Profile", 
+          style: const TextStyle(fontWeight: FontWeight.w900, color: AppTheme.textColor)
+        ),
         centerTitle: true,
-        backgroundColor: Colors.white,
+        backgroundColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: Colors.black,
+        leading: widget.isEditing ? IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppTheme.textColor),
+          onPressed: () => Navigator.pop(context),
+        ) : null,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                "Personal Details",
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.indigo),
-              ),
-              const SizedBox(height: 24),
-              _buildTextField(
-                controller: _nameController,
-                label: "Full Name",
-                icon: Icons.person_outline,
-                validator: (val) => val == null || val.isEmpty ? "Please enter your name" : null,
-              ),
-              const SizedBox(height: 16),
-              _buildTextField(
-                controller: _phoneController,
-                label: "Phone Number",
-                icon: Icons.phone_outlined,
-                keyboardType: TextInputType.phone,
-                validator: (val) => val == null || val.length < 10 ? "Enter a valid phone number" : null,
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                "Rescue & Delivery Address",
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.indigo),
-              ),
-              const SizedBox(height: 24),
-              _buildTextField(
-                controller: _addressController,
-                label: "Complete Address",
-                icon: Icons.location_on_outlined,
-                maxLines: 3,
-                validator: (val) => val == null || val.isEmpty ? "Please enter your address" : null,
-              ),
-              const SizedBox(height: 16),
-              const Text("Address Type", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  _buildAddressTypeChip("home", Icons.home_outlined),
-                  const SizedBox(width: 12),
-                  _buildAddressTypeChip("office", Icons.work_outline),
-                ],
-              ),
-              const SizedBox(height: 48),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _saveProfile,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.indigo[900],
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    elevation: 5,
-                  ),
-                  child: _isLoading 
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text("Complete Setup", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+      body: Container(
+        height: MediaQuery.of(context).size.height,
+        decoration: const BoxDecoration(gradient: AppTheme.bgGlowingEffect),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Personal Details",
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppTheme.textColor),
                 ),
-              ),
-            ],
+                const SizedBox(height: 24),
+                _buildTextField(
+                  controller: _nameController,
+                  label: "Full Name",
+                  icon: Icons.person_rounded,
+                  validator: (val) => val == null || val.isEmpty ? "Please enter your name" : null,
+                ),
+                const SizedBox(height: 20),
+                _buildTextField(
+                  controller: _phoneController,
+                  label: "Phone Number",
+                  icon: Icons.phone_iphone_rounded,
+                  keyboardType: TextInputType.phone,
+                  validator: (val) => val == null || val.length < 10 ? "Enter a valid phone number" : null,
+                ),
+                const SizedBox(height: 32),
+                const Text(
+                  "Service Address",
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: AppTheme.textColor),
+                ),
+                const SizedBox(height: 24),
+                _buildTextField(
+                  controller: _addressController,
+                  label: "Complete Address",
+                  icon: Icons.location_on_rounded,
+                  maxLines: 3,
+                  validator: (val) => val == null || val.isEmpty ? "Please enter your address" : null,
+                ),
+                const SizedBox(height: 24),
+                const Text("Address Type", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.textColor)),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    _buildAddressTypeChip("home", Icons.home_rounded),
+                    const SizedBox(width: 12),
+                    _buildAddressTypeChip("office", Icons.work_rounded),
+                  ],
+                ),
+                const SizedBox(height: 48),
+                SizedBox(
+                  width: double.infinity,
+                  height: 60,
+                  child: ElevatedButton(
+                    onPressed: _isLoading ? null : _saveProfile,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      elevation: 8,
+                      shadowColor: AppTheme.primaryColor.withAlpha(100),
+                    ),
+                    child: const Text("Complete Setup", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
           ),
         ),
       ),
@@ -180,14 +194,16 @@ class _CustomerProfileSetupPageState extends State<CustomerProfileSetupPage> {
       maxLines: maxLines,
       keyboardType: keyboardType,
       validator: validator,
+      style: const TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textColor),
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon, color: Colors.indigo),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey[300]!)),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide(color: Colors.grey[200]!)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Colors.indigo, width: 2)),
+        labelStyle: const TextStyle(color: AppTheme.subtitleColor, fontWeight: FontWeight.w500),
+        prefixIcon: Icon(icon, color: AppTheme.primaryColor),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide(color: AppTheme.primaryColor.withAlpha(20))),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: const BorderSide(color: AppTheme.primaryColor, width: 2)),
         filled: true,
-        fillColor: Colors.grey[50],
+        fillColor: Colors.white,
       ),
     );
   }
@@ -196,22 +212,25 @@ class _CustomerProfileSetupPageState extends State<CustomerProfileSetupPage> {
     bool isSelected = _addressType == type;
     return GestureDetector(
       onTap: () => setState(() => _addressType = type),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.indigo : Colors.white,
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: isSelected ? Colors.indigo : Colors.grey[300]!),
+          color: isSelected ? AppTheme.primaryColor : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: isSelected ? AppTheme.glowingShadow : [BoxShadow(color: Colors.black.withAlpha(5), blurRadius: 10)],
+          border: Border.all(color: isSelected ? AppTheme.primaryColor : AppTheme.primaryColor.withAlpha(30)),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: isSelected ? Colors.white : Colors.indigo),
+            Icon(icon, size: 20, color: isSelected ? Colors.white : AppTheme.primaryColor),
             const SizedBox(width: 8),
             Text(
               type.toUpperCase(),
               style: TextStyle(
-                color: isSelected ? Colors.white : Colors.black,
-                fontWeight: FontWeight.bold,
+                color: isSelected ? Colors.white : AppTheme.primaryColor,
+                fontWeight: FontWeight.w900,
+                fontSize: 13,
               ),
             ),
           ],
@@ -220,3 +239,4 @@ class _CustomerProfileSetupPageState extends State<CustomerProfileSetupPage> {
     );
   }
 }
+
