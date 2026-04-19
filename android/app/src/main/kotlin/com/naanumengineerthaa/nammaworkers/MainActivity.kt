@@ -1,4 +1,4 @@
-package com.example.namma_workers
+package com.naanumengineerthaa.nammaworkers
 
 import io.flutter.embedding.android.FlutterActivity
 

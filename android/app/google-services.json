@@ -48,6 +48,66 @@
           ]
         }
       }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:939457999478:android:aca5a679137c9456576557",
+        "android_client_info": {
+          "package_name": "com.naanumengineerthaa.nammaworkers"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "939457999478-b30i9v1m25krbtqkqhl5kriujmvvvbpo.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.naanumengineerthaa.nammaworkers",
+            "certificate_hash": "702c77a22abf9d900ab4a1aac549dd66dae81e3d"
+          }
+        },
+        {
+          "client_id": "939457999478-jv9gsg765hrcrsv138ageit9slcn037d.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.naanumengineerthaa.nammaworkers",
+            "certificate_hash": "283badc72c0d28972a906c1854b55f8c01ee7206"
+          }
+        },
+        {
+          "client_id": "939457999478-k59gv65k4cmn7kepgr84hflasqjbva65.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.naanumengineerthaa.nammaworkers",
+            "certificate_hash": "966fb7966ef08a071fb7f9c1c3d03afa17e03d7e"
+          }
+        },
+        {
+          "client_id": "939457999478-8pn60ufqkso7kmd2g93hrpg1qh3jflj9.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC8Lx6Ickm8MnbOyi4aSvmjfIX2cp-C2Uw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "939457999478-8pn60ufqkso7kmd2g93hrpg1qh3jflj9.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "939457999478-2ag6qjpskutvsoa3c0v8rlng7e2l5ds1.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.nammaWorkers"
+              }
+            }
+          ]
+        }
+      }
     }
   ],
   "configuration_version": "1"
