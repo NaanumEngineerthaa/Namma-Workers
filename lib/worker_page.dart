@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:geolocator/geolocator.dart'as geo;
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -15,6 +15,8 @@ import 'worker_history_page.dart';
 import 'login_page.dart';
 import 'theme.dart';
 import 'widgets/loading_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:permission_handler/permission_handler.dart'as ph;
 
 class WorkerPage extends StatefulWidget {
   const WorkerPage({super.key});
@@ -27,11 +29,11 @@ class _WorkerPageState extends State<WorkerPage> {
   int _currentIndex = 0;
   bool _isOnline = false;
   LatLng? _currentPosition;
-  StreamSubscription<Position>? _positionStreamSubscription;
+  StreamSubscription<geo.Position>? _positionStreamSubscription;
   final MapController _mapController = MapController();
   final List<Marker> _markers = [];
 
-  StreamSubscription<ServiceStatus>? _serviceStatusStreamSubscription;
+  StreamSubscription<geo.ServiceStatus>? _serviceStatusStreamSubscription;
   StreamSubscription<QuerySnapshot>? _jobRequestSubscription;
   StreamSubscription<QuerySnapshot>? _activeJobSubscription;
 
@@ -61,6 +63,33 @@ class _WorkerPageState extends State<WorkerPage> {
       }
     });
   }
+
+Future<bool> _showBackgroundLocationDisclosure() async {
+  return await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          title: const Text("Background Location"),
+          content: const Text(
+            "Namma Workers collects your location only while you are Online as a worker. "
+            "This allows nearby customers to find you and send job requests even when "
+            "the app is minimized. Location sharing stops immediately when you switch "
+            "Offline. Your location is not used for advertising."
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text("Continue"),
+            ),
+          ],
+        ),
+      ) ??
+      false;
+}
 
   void _listenToJobStatusChanges() {
     final user = FirebaseAuth.instance.currentUser;
@@ -153,65 +182,93 @@ class _WorkerPageState extends State<WorkerPage> {
     
     bool permissionGranted = await _handlePermission(showMessages: false);
     if (permissionGranted) {
-      Position position = await Geolocator.getCurrentPosition();
+      geo.Position position = await geo.Geolocator.getCurrentPosition();
       _updateUI(position);
     }
   }
 
-  Future<void> _toggleOnlineStatus() async {
-    if (_isOnline) {
-      await _stopTracking();
-    } else {
-      bool permissionGranted = await _handlePermission();
-      if (permissionGranted) {
-        await _startTracking();
-      }
-    }
+ Future<void> _toggleOnlineStatus() async {
+  if (_isOnline) {
+    await _stopTracking();
+    return;
   }
+
+  final prefs = await SharedPreferences.getInstance();
+
+  bool alreadyShown =
+      prefs.getBool("backgroundDisclosureShown") ?? false;
+
+  if (!alreadyShown) {
+    final accepted = await _showBackgroundLocationDisclosure();
+
+    if (!accepted) return;
+
+    await prefs.setBool("backgroundDisclosureShown", true);
+  }
+
+  bool permissionGranted = await _handlePermission();
+
+  if (permissionGranted) {
+    await _startTracking();
+  }
+}
 
   Future<bool> _handlePermission({bool showMessages = true}) async {
-    LocationPermission permission;
+  // Check if GPS is enabled
+  bool serviceEnabled = await geo.Geolocator.isLocationServiceEnabled();
 
-    // Check permissions first - this helps wake up the OS on some devices
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        if (mounted && showMessages) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Location permission was denied.")));
-        }
-        return false;
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      if (mounted && showMessages) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text("Location permissions are permanently denied."),
-            action: SnackBarAction(label: "Settings", onPressed: () => Geolocator.openAppSettings()),
+  if (!serviceEnabled) {
+    if (mounted && showMessages) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+              "GPS is OFF. Please turn it on in your phone's notification bar."),
+          action: SnackBarAction(
+            label: "Open Settings",
+            onPressed: () => geo.Geolocator.openLocationSettings(),
           ),
-        );
-      }
-      return false;
+        ),
+      );
     }
-
-    // Now check if service is enabled
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      if (mounted && showMessages) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text("GPS is OFF. Please turn it on in your phone's notification bar."),
-            action: SnackBarAction(label: "Open Settings", onPressed: () => Geolocator.openLocationSettings()),
-          ),
-        );
-      }
-      return false;
-    }
-
-    return true;
+    return false;
   }
+
+  // Request foreground location
+  var foreground = await ph.Permission.location.request();
+
+  if (!foreground.isGranted) {
+    if (mounted && showMessages) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Location permission was denied."),
+        ),
+      );
+    }
+    return false;
+  }
+
+  // Request background location
+  var background = await ph.Permission.locationAlways.request();
+
+  if (!background.isGranted) {
+    if (mounted && showMessages) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            "Please enable 'Allow all the time' for background location.",
+          ),
+          action: SnackBarAction(
+            label: "Settings",
+            onPressed: () => ph.openAppSettings(),
+          ),
+        ),
+      );
+    }
+    return false;
+  }
+
+  return true;
+}
 
   // --- JOB MANAGEMENT LOGIC ---
 
@@ -400,10 +457,10 @@ class _WorkerPageState extends State<WorkerPage> {
   }
 
   void _subscribeToServiceStatus() {
-    _serviceStatusStreamSubscription = Geolocator.getServiceStatusStream().listen((ServiceStatus status) {
-      if (status == ServiceStatus.enabled && _isOnline) {
+    _serviceStatusStreamSubscription = geo.Geolocator.getServiceStatusStream().listen((geo.ServiceStatus status) {
+      if (status == geo.ServiceStatus.enabled && _isOnline) {
         _startTracking();
-      } else if (status == ServiceStatus.disabled) {
+      } else if (status == geo.ServiceStatus.disabled) {
         _stopTracking();
       }
     });
@@ -434,13 +491,13 @@ class _WorkerPageState extends State<WorkerPage> {
         'lastActive': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      const LocationSettings locationSettings = LocationSettings(
-        accuracy: LocationAccuracy.best,
+      const geo.LocationSettings locationSettings = geo.LocationSettings(
+        accuracy: geo.LocationAccuracy.best,
         distanceFilter: 5, // Update every 5 meters
       );
 
-      _positionStreamSubscription = Geolocator.getPositionStream(locationSettings: locationSettings).listen(
-        (Position position) {
+      _positionStreamSubscription = geo.Geolocator.getPositionStream(locationSettings: locationSettings).listen(
+        (geo.Position position) {
           _updateLocationInFirestore(position);
           _updateUI(position);
         },
@@ -451,8 +508,8 @@ class _WorkerPageState extends State<WorkerPage> {
       );
       debugPrint("🚀 Continuous GPS Stream ACTIVE");
 
-      Position currentPosition = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.best,
+      geo.Position currentPosition = await geo.Geolocator.getCurrentPosition(
+        desiredAccuracy: geo.LocationAccuracy.best,
       );
       _updateLocationInFirestore(currentPosition);
       _updateUI(currentPosition);
@@ -484,7 +541,7 @@ class _WorkerPageState extends State<WorkerPage> {
     debugPrint("🛑 Location tracking stopped");
   }
 
-  void _updateLocationInFirestore(Position position) {
+  void _updateLocationInFirestore(geo.Position position) {
     if (!_isOnline) return;
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -497,7 +554,7 @@ class _WorkerPageState extends State<WorkerPage> {
     }, SetOptions(merge: true));
   }
 
-  void _updateUI(Position position) {
+  void _updateUI(geo.Position position) {
     if (!mounted) return;
     setState(() {
       _currentPosition = LatLng(position.latitude, position.longitude);
@@ -1183,7 +1240,7 @@ class _WorkerPageState extends State<WorkerPage> {
                         MaterialPageRoute(
                           builder: (context) => LiveRequestsPage(
                             profession: profession,
-                            currentPosition: _currentPosition != null ? Position(
+                            currentPosition: _currentPosition != null ? geo.Position(
                                 latitude: _currentPosition!.latitude,
                                 longitude: _currentPosition!.longitude,
                                 timestamp: DateTime.now(),
@@ -1305,7 +1362,7 @@ class _WorkerPageState extends State<WorkerPage> {
                         MaterialPageRoute(
                           builder: (context) => ScheduledRequestsPage(
                             profession: profession,
-                            currentPosition: _currentPosition != null ? Position(
+                            currentPosition: _currentPosition != null ? geo.Position(
                                 latitude: _currentPosition!.latitude,
                                 longitude: _currentPosition!.longitude,
                                 timestamp: DateTime.now(),
@@ -1561,7 +1618,7 @@ class _WorkerPageState extends State<WorkerPage> {
     // Distance calculation
     String distanceStr = "N/A";
     if (_currentPosition != null && data['latitude'] != null && data['longitude'] != null) {
-      double dist = Geolocator.distanceBetween(
+      double dist = geo.Geolocator.distanceBetween(
         _currentPosition!.latitude, 
         _currentPosition!.longitude, 
         (data['latitude'] as num).toDouble(), 
