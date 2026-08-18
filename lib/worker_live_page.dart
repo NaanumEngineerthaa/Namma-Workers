@@ -37,46 +37,87 @@ class WorkerLivePage extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 // 🔘 BIG TOGGLE BUTTON
-                Center(
-                  child: GestureDetector(
-                    onTap: onToggle,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      width: 280,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: isOnline 
-                            ? [AppTheme.primaryColor, AppTheme.accentColor] 
-                            : [AppTheme.unselectedColor, AppTheme.unselectedColor.withAlpha(200)],
-                        ),
-                        borderRadius: BorderRadius.circular(40),
-                        boxShadow: AppTheme.glowingShadow,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            isOnline ? Icons.power_settings_new : Icons.power_off,
-                            color: Colors.white,
-                            size: 30,
-                          ),
-                          const SizedBox(width: 12),
-                          Text(
-                            isOnline ? "GO OFFLINE" : "GO ONLINE",
-                            style: const TextStyle(
-                              fontSize: 22, 
-                              fontWeight: FontWeight.bold, 
-                              color: Colors.white,
-                              letterSpacing: 1.2,
+                    Center(
+                      child: GestureDetector(
+                        onTap: () {
+                          if (!isOnline) {
+                            // --- ADDED FOR GOOGLE PLAY COMPLIANCE ---
+                            // Show Prominent Disclosure before going online
+                            showDialog(
+                              context: context,
+                              barrierDismissible: false, // Force user to choose
+                              builder: (BuildContext dialogContext) {
+                                return AlertDialog(
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                  title: const Text("Background Location Required", 
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)
+                                  ),
+                                  content: const Text(
+                                    "Namma Workers collects location data to enable real-time job matching and tracking "
+                                    "even when the app is closed or not in use. This ensures you receive job requests from nearby customers.",
+                                    style: TextStyle(height: 1.5, fontSize: 14),
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(dialogContext), // Close dialog, do nothing
+                                      child: const Text("No Thanks", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                                    ),
+                                    ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppTheme.primaryColor,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      ),
+                                      onPressed: () {
+                                        Navigator.pop(dialogContext); // Close the dialog
+                                        onToggle(); // Proceed to trigger the system permission & go online
+                                      },
+                                      child: const Text("I Agree", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                    ),
+                                  ],
+                                );
+                              },
+                            );
+                          } else {
+                            // If they are already online, just go offline without the dialog
+                            onToggle();
+                          }
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          width: 280,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: isOnline 
+                                ? [AppTheme.primaryColor, AppTheme.accentColor] 
+                                : [AppTheme.unselectedColor, AppTheme.unselectedColor.withAlpha(200)],
                             ),
+                            borderRadius: BorderRadius.circular(40),
+                            boxShadow: AppTheme.glowingShadow,
                           ),
-                        ],
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                isOnline ? Icons.power_settings_new : Icons.power_off,
+                                color: Colors.white,
+                                size: 30,
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                isOnline ? "GO OFFLINE" : "GO ONLINE",
+                                style: const TextStyle(
+                                  fontSize: 22, 
+                                  fontWeight: FontWeight.bold, 
+                                  color: Colors.white,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                ),
-
                 const SizedBox(height: 30),
 
                 // 📊 STATUS CARD

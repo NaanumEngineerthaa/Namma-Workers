@@ -15,7 +15,6 @@ import 'worker_history_page.dart';
 import 'login_page.dart';
 import 'theme.dart';
 import 'widgets/loading_screen.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart'as ph;
 
 class WorkerPage extends StatefulWidget {
@@ -63,33 +62,6 @@ class _WorkerPageState extends State<WorkerPage> {
       }
     });
   }
-
-Future<bool> _showBackgroundLocationDisclosure() async {
-  return await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => AlertDialog(
-          title: const Text("Background Location"),
-          content: const Text(
-            "Namma Workers collects your location only while you are Online as a worker. "
-            "This allows nearby customers to find you and send job requests even when "
-            "the app is minimized. Location sharing stops immediately when you switch "
-            "Offline. Your location is not used for advertising."
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text("Cancel"),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text("Continue"),
-            ),
-          ],
-        ),
-      ) ??
-      false;
-}
 
   void _listenToJobStatusChanges() {
     final user = FirebaseAuth.instance.currentUser;
@@ -180,37 +152,70 @@ Future<bool> _showBackgroundLocationDisclosure() async {
     // Only fetch if logged in
     if (FirebaseAuth.instance.currentUser == null) return;
     
-    bool permissionGranted = await _handlePermission(showMessages: false);
-    if (permissionGranted) {
-      geo.Position position = await geo.Geolocator.getCurrentPosition();
-      _updateUI(position);
+    // Check if GPS is enabled and permission is already granted without prompting the user
+    bool serviceEnabled = await geo.Geolocator.isLocationServiceEnabled();
+    if (serviceEnabled) {
+      var status = await ph.Permission.location.status;
+      if (status.isGranted) {
+        geo.Position position = await geo.Geolocator.getCurrentPosition();
+        _updateUI(position);
+      }
     }
   }
 
- Future<void> _toggleOnlineStatus() async {
+ Future<void> _toggleOnlineStatus({bool skipDisclosure = false}) async {
   if (_isOnline) {
     await _stopTracking();
     return;
   }
 
-  final prefs = await SharedPreferences.getInstance();
-
-  bool alreadyShown =
-      prefs.getBool("backgroundDisclosureShown") ?? false;
-
-  if (!alreadyShown) {
-    final accepted = await _showBackgroundLocationDisclosure();
-
-    if (!accepted) return;
-
-    await prefs.setBool("backgroundDisclosureShown", true);
+  if (skipDisclosure) {
+    bool permissionGranted = await _handlePermission();
+    if (permissionGranted) {
+      await _startTracking();
+    }
+    return;
   }
 
-  bool permissionGranted = await _handlePermission();
+  if (!mounted) return;
 
-  if (permissionGranted) {
-    await _startTracking();
-  }
+  showDialog(
+    context: context,
+    barrierDismissible: false, // Force user to choose
+    builder: (BuildContext dialogContext) {
+      return AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Background Location Required", 
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)
+        ),
+        content: const Text(
+          "Namma Workers collects location data to enable real-time job matching and tracking "
+          "even when the app is closed or not in use. This ensures you receive job requests from nearby customers.",
+          style: TextStyle(height: 1.5, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext), // Close dialog, do nothing
+            child: const Text("No Thanks", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () async {
+              Navigator.pop(dialogContext); // Close the dialog
+              bool permissionGranted = await _handlePermission();
+              if (permissionGranted) {
+                await _startTracking();
+              }
+            },
+            child: const Text("I Agree", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      );
+    },
+  );
 }
 
   Future<bool> _handlePermission({bool showMessages = true}) async {
@@ -644,7 +649,7 @@ Future<bool> _showBackgroundLocationDisclosure() async {
   Widget _buildCurrentPage() {
     switch (_currentIndex) {
       case 0: return _buildDashboard();
-      case 1: return WorkerLivePage(isOnline: _isOnline, onToggle: _toggleOnlineStatus);
+      case 1: return WorkerLivePage(isOnline: _isOnline, onToggle: () => _toggleOnlineStatus(skipDisclosure: true));
       case 2: return _buildMapPage();
       case 3: return _buildSchedulePage();
       case 4: return _buildProfilePage();
